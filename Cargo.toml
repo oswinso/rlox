@@ -1,0 +1,15 @@
+[package]
+name = "rlox"
+version = "0.1.0"
+authors = ["Oswin So <oswinso@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+
+[[bin]]
+name = "rlox"
+path = "src/main.rs"
+
+[[bin]]
+name = "generate_ast"
+path = "src/tools/generate_ast/main.rs"
