@@ -1,22 +1,36 @@
 use crate::front::token::Token;
+use std::fmt;
 
+#[derive(Debug, Clone)]
 pub enum Expr {
     Binary(Binary),
     Grouping(Grouping),
     Literal(Literal),
     Unary(Unary),
+    Ternary(Ternary),
+    Variable(Variable),
 }
 
+#[derive(Debug, Clone)]
 pub struct Binary {
     pub left: Box<Expr>,
     pub operator: Box<Token>,
     pub right: Box<Expr>,
 }
 
+#[derive(Debug, Clone)]
+pub struct Ternary {
+    pub condition: Box<Expr>,
+    pub true_branch: Box<Expr>,
+    pub false_branch: Box<Expr>,
+}
+
+#[derive(Debug, Clone)]
 pub struct Grouping {
     pub expression: Box<Expr>,
 }
 
+#[derive(Debug, PartialEq, Clone)]
 pub enum Literal {
     String(String),
     Number(f64),
@@ -24,9 +38,20 @@ pub enum Literal {
     Nil,
 }
 
+#[derive(Debug, PartialEq, Clone)]
+pub enum Value {
+    Literal(Literal),
+}
+
+#[derive(Debug, Clone)]
 pub struct Unary {
     pub operator: Box<Token>,
     pub right: Box<Expr>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Variable {
+    pub name: Token,
 }
 
 pub trait Visitor<T> {
@@ -34,6 +59,8 @@ pub trait Visitor<T> {
     fn visit_grouping(&self, grouping: &Grouping) -> T;
     fn visit_literal(&self, literal: &Literal) -> T;
     fn visit_unary(&self, unary: &Unary) -> T;
+    fn visit_ternary(&self, ternary: &Ternary) -> T;
+    fn visit_variable(&self, variable: &Variable) -> T;
 }
 
 impl Expr {
@@ -43,6 +70,94 @@ impl Expr {
             Expr::Grouping(grouping) => visitor.visit_grouping(grouping),
             Expr::Literal(literal) => visitor.visit_literal(literal),
             Expr::Unary(unary) => visitor.visit_unary(unary),
+            Expr::Ternary(ternary) => visitor.visit_ternary(ternary),
+            Expr::Variable(variable) => visitor.visit_variable(variable),
         }
+    }
+}
+
+impl Binary {
+    pub fn new(left: Expr, operator: Token, right: Expr) -> Binary {
+        Binary {
+            left: Box::new(left),
+            operator: Box::new(operator),
+            right: Box::new(right),
+        }
+    }
+}
+
+impl Grouping {
+    pub fn new(expr: Expr) -> Grouping {
+        Grouping {
+            expression: Box::new(expr),
+        }
+    }
+}
+
+impl Unary {
+    pub fn new(operator: Token, expr: Expr) -> Unary {
+        Unary {
+            operator: Box::new(operator),
+            right: Box::new(expr),
+        }
+    }
+}
+
+impl Ternary {
+    pub fn new(condition: Expr, true_branch: Expr, false_branch: Expr) -> Ternary {
+        Ternary {
+            condition: Box::new(condition),
+            true_branch: Box::new(true_branch),
+            false_branch: Box::new(false_branch),
+        }
+    }
+}
+
+impl fmt::Display for Literal {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        match self {
+            Literal::String(s) => write!(f, "{}", s),
+            Literal::Number(n) => write!(f, "{}", n),
+            Literal::Bool(b) => write!(f, "{}", b),
+            Literal::Nil => write!(f, "Nil"),
+        }
+    }
+}
+
+impl fmt::Display for Value {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Value::Literal(literal) => write!(f, "{}", literal),
+        }
+    }
+}
+
+impl From<f64> for Literal {
+    fn from(num: f64) -> Self {
+        Literal::Number(num)
+    }
+}
+
+impl From<String> for Literal {
+    fn from(s: String) -> Self {
+        Literal::String(s)
+    }
+}
+
+impl From<bool> for Literal {
+    fn from(b: bool) -> Self {
+        Literal::Bool(b)
+    }
+}
+
+impl From<Literal> for Value {
+    fn from(literal: Literal) -> Self {
+        Value::Literal(literal)
+    }
+}
+
+impl From<Literal> for Expr {
+    fn from(literal: Literal) -> Self {
+        Expr::Literal(literal)
     }
 }

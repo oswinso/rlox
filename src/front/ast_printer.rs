@@ -1,6 +1,4 @@
 use crate::front::expr::*;
-use crate::front::token::Token;
-use crate::front::token_type::TokenType;
 
 pub struct AstPrinter {}
 
@@ -48,5 +46,20 @@ impl Visitor<String> for AstPrinter {
 
     fn visit_unary(&self, unary: &Unary) -> String {
         self.parenthesize(&unary.operator.lexeme, vec![&unary.right])
+    }
+
+    fn visit_ternary(&self, ternary: &Ternary) -> String {
+        self.parenthesize(
+            "ternary",
+            vec![
+                &ternary.condition,
+                &ternary.true_branch,
+                &ternary.false_branch,
+            ],
+        )
+    }
+
+    fn visit_variable(&self, variable: &Variable) -> String {
+        variable.name.lexeme.clone()
     }
 }

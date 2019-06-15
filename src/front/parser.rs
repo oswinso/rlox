@@ -1,4 +1,6 @@
+use crate::front::ast_printer::AstPrinter;
 use crate::front::expr::*;
+use crate::front::stmt::{Declaration, Stmt};
 use crate::front::token::Token;
 use crate::front::token_type::TokenType;
 use crate::report;
@@ -10,18 +12,91 @@ pub struct Parser {
 
 impl Parser {
     pub fn new(tokens: Vec<Token>) -> Parser {
-        Parser {
-            tokens,
-            current: 0
+        Parser { tokens, current: 0 }
+    }
+
+    pub fn parse(&mut self) -> Vec<Stmt> {
+        let mut statements = Vec::new();
+        while !self.is_at_end() {
+            self.declaration()
+                .map(|declaration| statements.push(declaration));
+        }
+        statements
+    }
+
+    fn declaration(&mut self) -> Option<Stmt> {
+        let res = if self.match_tokens(vec![TokenType::Let]) {
+            self.variable_declaration()
+        } else {
+            self.statement()
+        };
+        if res.is_none() {
+            self.synchronize();
+        }
+        res
+    }
+
+    fn variable_declaration(&mut self) -> Option<Stmt> {
+        let name = self
+            .consume(TokenType::Identifier("".into()), "Expected variable name")
+            .unwrap()
+            .clone();
+
+        let initializer = if self.match_tokens(vec![TokenType::Equal]) {
+            self.expression()
+        } else {
+            None
+        };
+
+        self.consume(
+            TokenType::Semicolon,
+            "Expected ';' after variable declaration",
+        );
+        Some(Stmt::Declaration(Declaration { name, initializer }))
+    }
+
+    fn statement(&mut self) -> Option<Stmt> {
+        if self.match_tokens(vec![TokenType::Print]) {
+            self.print_statement()
+        } else {
+            self.expression_statement()
         }
     }
 
-    pub fn parse(&mut self) -> Option<Expr> {
-        self.expression()
+    fn print_statement(&mut self) -> Option<Stmt> {
+        let value = self.expression()?;
+        self.consume(TokenType::Semicolon, "Expected ';' after value.");
+        Some(Stmt::Print(value))
+    }
+
+    fn expression_statement(&mut self) -> Option<Stmt> {
+        let value = self.expression()?;
+        self.consume(TokenType::Semicolon, "Expected ';' after value.");
+        Some(Stmt::Expression(value))
     }
 
     fn expression(&mut self) -> Option<Expr> {
-        self.equality()
+        self.ternary()
+    }
+
+    fn ternary(&mut self) -> Option<Expr> {
+        let condition = self.equality()?;
+
+        if self.match_tokens(vec![TokenType::QuestionMark]) {
+            let question_mark: Token = self.previous().clone();
+            let true_branch = self.equality()?;
+
+            if self.match_tokens(vec![TokenType::Colon]) {
+                let colon: Token = self.previous().clone();
+                let false_branch = self.ternary()?;
+                return Some(Expr::Ternary(Ternary::new(
+                    condition,
+                    true_branch,
+                    false_branch,
+                )));
+            }
+        }
+        Some(condition)
     }
 
     fn equality(&mut self) -> Option<Expr> {
@@ -30,11 +105,7 @@ impl Parser {
         while self.match_tokens(vec![TokenType::BangEqual, TokenType::EqualEqual]) {
             let operator: Token = self.previous().clone();
             let right = self.comparison()?;
-            expr = Expr::Binary(Binary {
-                left: Box::new(expr),
-                operator: Box::new(operator),
-                right: Box::new(right),
-            })
+            expr = Expr::Binary(Binary::new(expr, operator, right))
         }
         Some(expr)
     }
@@ -50,11 +121,7 @@ impl Parser {
         ]) {
             let operator: Token = self.previous().clone();
             let right = self.addition()?;
-            expr = Expr::Binary(Binary {
-                left: Box::new(expr),
-                operator: Box::new(operator),
-                right: Box::new(right),
-            })
+            expr = Expr::Binary(Binary::new(expr, operator, right))
         }
         Some(expr)
     }
@@ -65,11 +132,7 @@ impl Parser {
         while self.match_tokens(vec![TokenType::Plus, TokenType::Minus]) {
             let operator: Token = self.previous().clone();
             let right = self.multiplication()?;
-            expr = Expr::Binary(Binary {
-                left: Box::new(expr),
-                operator: Box::new(operator),
-                right: Box::new(right),
-            })
+            expr = Expr::Binary(Binary::new(expr, operator, right))
         }
         Some(expr)
     }
@@ -80,11 +143,7 @@ impl Parser {
         while self.match_tokens(vec![TokenType::Star, TokenType::Slash]) {
             let operator: Token = self.previous().clone();
             let right = self.unary()?;
-            expr = Expr::Binary(Binary {
-                left: Box::new(expr),
-                operator: Box::new(operator),
-                right: Box::new(right),
-            })
+            expr = Expr::Binary(Binary::new(expr, operator, right))
         }
         Some(expr)
     }
@@ -93,10 +152,7 @@ impl Parser {
         if self.match_tokens(vec![TokenType::Bang, TokenType::Minus]) {
             let operator: Token = self.previous().clone();
             let right: Expr = self.unary()?;
-            return Some(Expr::Unary(Unary {
-                operator: Box::new(operator),
-                right: Box::new(right),
-            }));
+            return Some(Expr::Unary(Unary::new(operator, right)));
         }
         let prim = self.primary()?;
         Some(prim)
@@ -106,22 +162,23 @@ impl Parser {
         let peeked = self.peek().clone().token_type;
         self.advance();
         match peeked {
-            TokenType::False => Some(Expr::Literal(Literal::Bool(false))),
-            TokenType::True => Some(Expr::Literal(Literal::Bool(true))),
-            TokenType::Nil => Some(Expr::Literal(Literal::Nil)),
-            TokenType::Number(num) => Some(Expr::Literal(Literal::Number(num))),
-            TokenType::String(string) => Some(Expr::Literal(Literal::String(string))),
+            TokenType::False => Some(Expr::Literal(false.into())),
+            TokenType::True => Some(Expr::Literal(true.into())),
+            TokenType::Nil => Some(Expr::Literal(Literal::Nil.into())),
+            TokenType::Number(num) => Some(Expr::Literal(num.into())),
+            TokenType::String(string) => Some(Expr::Literal(string.into())),
             TokenType::LeftParen => {
                 let expr = self.expression()?;
                 self.consume(TokenType::RightParen, "Expected ')' after expression.");
-                Some(Expr::Grouping(Grouping {
-                    expression: Box::new(expr),
-                }))
+                Some(Expr::Grouping(Grouping::new(expr)))
             }
+            TokenType::Identifier(string) => Some(Expr::Variable(Variable {
+                name: self.previous().clone(),
+            })),
             c => {
                 println!("Token: {:?}", c);
                 panic!("lol")
-            },
+            }
         }
     }
 
@@ -139,7 +196,7 @@ impl Parser {
         if self.is_at_end() {
             return false;
         }
-        self.peek().token_type == token
+        std::mem::discriminant(&self.peek().token_type) == std::mem::discriminant(&token)
     }
 
     fn is_at_end(&self) -> bool {

@@ -6,3 +6,10 @@ pub mod token_type;
 pub mod ast_printer;
 
 pub mod parser;
+
+pub mod errors;
+pub mod interpreter;
+
+pub mod stmt;
+
+pub mod environment;

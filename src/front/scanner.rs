@@ -1,9 +1,6 @@
-use std::{string, vec};
-
+use crate::error;
 use crate::front::token::Token;
 use crate::front::token_type::TokenType;
-use crate::{error, report};
-use std::collections::HashMap;
 
 pub struct Scanner<'a> {
     source: &'a str,
@@ -53,6 +50,8 @@ impl<'a> Scanner<'a> {
             '+' => self.add_token(TokenType::Plus),
             ';' => self.add_token(TokenType::Semicolon),
             '*' => self.add_token(TokenType::Star),
+            '?' => self.add_token(TokenType::QuestionMark),
+            ':' => self.add_token(TokenType::Colon),
 
             '!' => {
                 if self.try_consume('=') {
