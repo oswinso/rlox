@@ -1,14 +1,16 @@
 use crate::front::expr::{
-    self, Assign, Binary, Expr, Grouping, Literal, Ternary, Unary, Value, Variable,
+    self, Assign, Binary, Call, Expr, Grouping, Literal, Ternary, Unary, Value, Variable,
 };
 use crate::front::stmt::{self, Block, Declaration, If, Stmt, While};
 use crate::front::token::Token;
 use crate::front::token_type::TokenType;
 
-use crate::front::errors::{ComposedError, RuntimeError, TypeError};
+use crate::front::errors::{ComposedError, RuntimeError, TypeError, IncorrectArgumentsError};
 
+use crate::front::callables::{Callable, Clock};
 use crate::front::environment::Environment;
 use crate::runtime_error;
+use std::rc::Rc;
 
 pub struct Interpreter {
     environment: Environment,
@@ -18,8 +20,18 @@ type RuntimeResult = Result<Value, Box<RuntimeError>>;
 
 impl Interpreter {
     pub fn new() -> Interpreter {
-        Interpreter {
+        let mut interpreter = Interpreter {
             environment: Environment::new(),
+        };
+        interpreter.define_globals();
+        interpreter
+    }
+
+    pub fn define_globals(&mut self) {
+        let funcs: Vec<Rc<Box<dyn Callable>>> = vec![Clock::new()];
+
+        for callable in funcs {
+            self.environment.define(callable.name().to_owned(), Some(Value::Callable(callable)))
         }
     }
 
@@ -137,6 +149,7 @@ impl Interpreter {
                 (Literal::Number(left), Literal::Number(right)) => left == right,
                 _ => false,
             },
+            _ => false
         }
     }
 
@@ -210,6 +223,26 @@ impl expr::Visitor<RuntimeResult> for Interpreter {
         self.handle_binary(&binary.operator, left, right)
     }
 
+    fn visit_call(&mut self, call: &Call) -> RuntimeResult {
+        let callee = self.evaluate(&call.callee)?;
+
+        let mut arguments = Vec::new();
+        for argument in &call.arguments {
+            let arg = self.evaluate(&argument)?;
+            arguments.push(arg);
+        }
+
+        match callee {
+            Value::Callable(callable) => {
+                if arguments.len() != callable.arity() {
+                    return Err(IncorrectArgumentsError::new(*call.paren.clone(), callable.arity(), arguments.len()).into())
+                }
+                Ok(callable.call(self, arguments))
+            },
+            _ => Err(TypeError::new(*call.paren.clone(), "Can only call functions and classes!").into())
+        }
+    }
+
     fn visit_grouping(&mut self, grouping: &Grouping) -> RuntimeResult {
         self.evaluate(&grouping.expression)
     }
@@ -266,6 +299,10 @@ impl stmt::Visitor<Option<Box<RuntimeError>>> for Interpreter {
             Ok(val) => match val {
                 Value::Literal(literal) => {
                     println!("{}", literal);
+                    None
+                }
+                Value::Callable(callable) => {
+                    println!("Callable");
                     None
                 }
             },

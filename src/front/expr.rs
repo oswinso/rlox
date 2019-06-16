@@ -1,10 +1,14 @@
 use crate::front::token::Token;
 use std::fmt;
+use crate::front::callables::Callable;
+use std::cell::RefCell;
+use std::rc::Rc;
 
 #[derive(Debug, Clone)]
 pub enum Expr {
     Assign(Assign),
     Binary(Binary),
+    Call(Call),
     Grouping(Grouping),
     Literal(Literal),
     Logical(Binary),
@@ -23,6 +27,13 @@ pub struct Binary {
     pub left: Box<Expr>,
     pub operator: Box<Token>,
     pub right: Box<Expr>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Call {
+    pub callee: Box<Expr>,
+    pub paren: Box<Token>,
+    pub arguments: Vec<Expr>,
 }
 
 #[derive(Debug, Clone)]
@@ -48,6 +59,7 @@ pub enum Literal {
 #[derive(Debug, PartialEq, Clone)]
 pub enum Value {
     Literal(Literal),
+    Callable(Rc<Box<dyn Callable>>)
 }
 
 #[derive(Debug, Clone)]
@@ -64,6 +76,7 @@ pub struct Variable {
 pub trait Visitor<T> {
     fn visit_assign(&mut self, assign: &Assign) -> T;
     fn visit_binary(&mut self, binary: &Binary) -> T;
+    fn visit_call(&mut self, call: &Call) -> T;
     fn visit_grouping(&mut self, grouping: &Grouping) -> T;
     fn visit_literal(&mut self, literal: &Literal) -> T;
     fn visit_logical(&mut self, logical: &Binary) -> T;
@@ -77,6 +90,7 @@ impl Expr {
         match self {
             Expr::Assign(assign) => visitor.visit_assign(assign),
             Expr::Binary(binary) => visitor.visit_binary(binary),
+            Expr::Call(call) => visitor.visit_call(call),
             Expr::Grouping(grouping) => visitor.visit_grouping(grouping),
             Expr::Literal(literal) => visitor.visit_literal(literal),
             Expr::Logical(logical) => visitor.visit_logical(logical),
@@ -102,6 +116,16 @@ impl Binary {
             left: Box::new(left),
             operator: Box::new(operator),
             right: Box::new(right),
+        }
+    }
+}
+
+impl Call {
+    pub fn new(callee: Expr, paren: Token, arguments: Vec<Expr>) -> Call {
+        Call {
+            callee: Box::new(callee),
+            paren: Box::new(paren),
+            arguments
         }
     }
 }
@@ -148,6 +172,7 @@ impl fmt::Display for Value {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Value::Literal(literal) => write!(f, "{}", literal),
+            Value::Callable(c) => write!(f, "{}", c)
         }
     }
 }

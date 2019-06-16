@@ -3,7 +3,7 @@ use crate::front::expr::*;
 use crate::front::stmt::{Block, Declaration, If, Stmt, While};
 use crate::front::token::Token;
 use crate::front::token_type::TokenType;
-use crate::report;
+use crate::{report, error};
 
 pub struct Parser {
     tokens: Vec<Token>,
@@ -64,9 +64,50 @@ impl Parser {
             self.if_statement()
         } else if self.match_tokens(vec![TokenType::While]) {
             self.while_statement()
+        } else if self.match_tokens(vec![TokenType::For]) {
+            self.for_statement()
         } else {
             self.expression_statement()
         }
+    }
+
+    fn for_statement(&mut self) -> Option<Stmt> {
+        self.consume(TokenType::LeftParen, "Expected '(' after 'for'.");
+
+        let initializer = if self.match_tokens(vec![TokenType::Semicolon]) {
+            None
+        } else if self.match_tokens(vec![TokenType::Let]) {
+            self.variable_declaration()
+        } else {
+            self.expression_statement()
+        };
+
+        let condition = if !self.check(TokenType::Semicolon) {
+            self.expression()?
+        } else {
+            Expr::Literal(true.into())
+        };
+        self.consume(TokenType::Semicolon, "Expected ';' after loop condition.");
+
+        let increment = if !self.check(TokenType::RightParen) {
+            self.expression()
+        } else {
+            None
+        };
+        self.consume(TokenType::RightParen, "Expected ')' after loop increment.");
+
+        let mut body = self.statement()?;
+        if let Some(increment) = increment {
+            body = Stmt::Block(Block::new(vec![body, Stmt::Expression(increment)]));
+        };
+
+        body = Stmt::While(While::new(condition, body));
+
+        if let Some(initializer) = initializer {
+            body = Stmt::Block(Block::new(vec![initializer, body]));
+        }
+
+        Some(body)
     }
 
     fn while_statement(&mut self) -> Option<Stmt> {
@@ -234,8 +275,38 @@ impl Parser {
             let right: Expr = self.unary()?;
             return Some(Expr::Unary(Unary::new(operator, right)));
         }
-        let prim = self.primary()?;
+        let prim = self.call()?;
         Some(prim)
+    }
+
+    fn call(&mut self) -> Option<Expr> {
+        let mut expr = self.primary()?;
+
+        loop {
+            if self.match_tokens(vec![TokenType::LeftParen]) {
+                expr = self.finish_call(expr)?;
+            } else {
+                break;
+            }
+        }
+
+        Some(expr)
+    }
+
+    fn finish_call(&mut self, callee: Expr) -> Option<Expr> {
+        let mut arguments = Vec::new();
+        if !self.check(TokenType::RightParen) {
+            while {
+                if arguments.len() >= 8 {
+                    error(self.peek().line, "Cannot have more than 8 arguments");
+                }
+                arguments.push(self.expression()?);
+                self.match_tokens(vec![TokenType::Comma])
+            } {}
+        }
+
+        let paren = self.consume(TokenType::RightParen, "Expected ')' after function call arguments")?;
+        Some(Expr::Call(Call::new(callee, paren.clone(), arguments)))
     }
 
     fn primary(&mut self) -> Option<Expr> {

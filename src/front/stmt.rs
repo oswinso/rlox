@@ -10,6 +10,7 @@ pub enum Stmt {
     While(While),
     Declaration(Declaration),
 }
+
 #[derive(Debug, Clone)]
 pub struct While {
     pub condition: Box<Expr>,

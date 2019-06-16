@@ -13,3 +13,5 @@ pub mod interpreter;
 pub mod stmt;
 
 pub mod environment;
+
+pub mod callables;

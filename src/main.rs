@@ -1,3 +1,4 @@
+#![feature(duration_float)]
 use std::env;
 use std::fs::File;
 use std::io::{self, Read, Write};
