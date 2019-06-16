@@ -95,14 +95,17 @@ fn run(source: &str, interpreter: &mut Interpreter) {
     let mut parser = Parser::new(tokens);
     let stmts = parser.parse();
 
-    for stmt in &stmts {
-        //        let expr: &Expr = match stmt {
-        //            Stmt::Expression(expr) => expr,
-        //            Stmt::Print(expr) => expr,
-        //            _ => &Expr::Literal(true.into()).clone()
-        //        };
-        //        println!("{}", AstPrinter::new().print(expr));
-    }
+    //    for stmt in &stmts {
+    //        let exprs: Vec<&Expr> = match stmt {
+    //            Stmt::Expression(expr) => vec![expr],
+    //            Stmt::Print(expr) => vec![expr],
+    //            Stmt::Block(block) => vec![],
+    //            Stmt::Declaration(decl) => decl.initializer.iter().collect()
+    //        };
+    //        for expr in exprs {
+    //            println!("{}", AstPrinter::new().print(expr));
+    //        }
+    //    }
 
     interpreter.interpret(&stmts);
 }

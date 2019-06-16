@@ -247,7 +247,12 @@ impl stmt::Visitor<Option<Box<RuntimeError>>> for Interpreter {
 
     fn visit_expression(&mut self, expression: &Expr) -> Option<Box<RuntimeError>> {
         match self.evaluate(expression) {
-            Ok(result) => None,
+            Ok(val) => match val {
+                Value::Literal(literal) => {
+                    println!("{}", literal);
+                    None
+                }
+            },
             Err(error) => Some(error),
         }
     }
