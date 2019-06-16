@@ -1,13 +1,14 @@
-use crate::front::expr::{self, Binary, Expr, Grouping, Literal, Ternary, Unary, Value, Variable};
-use crate::front::stmt::{self, Declaration, Stmt};
+use crate::front::expr::{
+    self, Assign, Binary, Expr, Grouping, Literal, Ternary, Unary, Value, Variable,
+};
+use crate::front::stmt::{self, Block, Declaration, Stmt};
 use crate::front::token::Token;
 use crate::front::token_type::TokenType;
 
-use crate::front::errors::{RuntimeError, TypeError};
+use crate::front::errors::{ComposedError, RuntimeError, TypeError};
 
 use crate::front::environment::Environment;
 use crate::runtime_error;
-use std::env::var;
 
 pub struct Interpreter {
     environment: Environment,
@@ -30,12 +31,21 @@ impl Interpreter {
         }
     }
 
-    fn evaluate(&self, expr: &Expr) -> RuntimeResult {
+    fn evaluate(&mut self, expr: &Expr) -> RuntimeResult {
         expr.accept(self)
     }
 
     fn execute(&mut self, stmt: &Stmt) -> Option<Box<RuntimeError>> {
         stmt.accept(self)
+    }
+
+    fn execute_block<'b>(&mut self, statements: &Vec<Stmt>) -> Option<Box<RuntimeError>> {
+        let error_vec: Vec<Box<RuntimeError>> = statements
+            .iter()
+            .map(|statement| self.execute(statement))
+            .flatten()
+            .collect();
+        ComposedError::from(error_vec)
     }
 
     fn handle_unary(&self, token: &Token, value: Value) -> RuntimeResult {
@@ -188,26 +198,32 @@ impl Interpreter {
 }
 
 impl expr::Visitor<RuntimeResult> for Interpreter {
-    fn visit_binary(&self, binary: &Binary) -> RuntimeResult {
+    fn visit_assign(&mut self, assign: &Assign) -> Result<Value, Box<RuntimeError>> {
+        let value = self.evaluate(&assign.value)?;
+        self.environment.assign(&assign.name, value.clone());
+        Ok(value)
+    }
+
+    fn visit_binary(&mut self, binary: &Binary) -> RuntimeResult {
         let left = self.evaluate(&binary.left)?;
         let right = self.evaluate(&binary.right)?;
         self.handle_binary(&binary.operator, left, right)
     }
 
-    fn visit_grouping(&self, grouping: &Grouping) -> RuntimeResult {
+    fn visit_grouping(&mut self, grouping: &Grouping) -> RuntimeResult {
         self.evaluate(&grouping.expression)
     }
 
-    fn visit_literal(&self, literal: &Literal) -> RuntimeResult {
+    fn visit_literal(&mut self, literal: &Literal) -> RuntimeResult {
         Ok(Value::Literal(literal.clone()))
     }
 
-    fn visit_unary(&self, unary: &Unary) -> RuntimeResult {
+    fn visit_unary(&mut self, unary: &Unary) -> RuntimeResult {
         let right = self.evaluate(&unary.right)?;
         self.handle_unary(&unary.operator, right)
     }
 
-    fn visit_ternary(&self, ternary: &Ternary) -> RuntimeResult {
+    fn visit_ternary(&mut self, ternary: &Ternary) -> RuntimeResult {
         let condition = self.evaluate(&ternary.condition)?;
         if self.is_truthy(condition) {
             self.evaluate(&ternary.true_branch)
@@ -216,12 +232,19 @@ impl expr::Visitor<RuntimeResult> for Interpreter {
         }
     }
 
-    fn visit_variable(&self, variable: &Variable) -> RuntimeResult {
+    fn visit_variable(&mut self, variable: &Variable) -> RuntimeResult {
         self.environment.get(&variable.name)
     }
 }
 
 impl stmt::Visitor<Option<Box<RuntimeError>>> for Interpreter {
+    fn visit_block(&mut self, block: &Block) -> Option<Box<RuntimeError>> {
+        self.environment.push();
+        let res = self.execute_block(&block.statements);
+        self.environment.pop();
+        res
+    }
+
     fn visit_expression(&mut self, expression: &Expr) -> Option<Box<RuntimeError>> {
         match self.evaluate(expression) {
             Ok(result) => None,
@@ -244,7 +267,7 @@ impl stmt::Visitor<Option<Box<RuntimeError>>> for Interpreter {
 
         let value = match initializer {
             Some(expr) => self.evaluate(expr),
-            None => Ok(Value::Literal(Literal::Nil))
+            None => Ok(Value::Literal(Literal::Nil)),
         };
 
         match value {

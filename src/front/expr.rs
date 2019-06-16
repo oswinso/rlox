@@ -3,12 +3,18 @@ use std::fmt;
 
 #[derive(Debug, Clone)]
 pub enum Expr {
+    Assign(Assign),
     Binary(Binary),
     Grouping(Grouping),
     Literal(Literal),
     Unary(Unary),
     Ternary(Ternary),
     Variable(Variable),
+}
+#[derive(Debug, Clone)]
+pub struct Assign {
+    pub name: Box<Token>,
+    pub value: Box<Expr>,
 }
 
 #[derive(Debug, Clone)]
@@ -55,23 +61,34 @@ pub struct Variable {
 }
 
 pub trait Visitor<T> {
-    fn visit_binary(&self, binary: &Binary) -> T;
-    fn visit_grouping(&self, grouping: &Grouping) -> T;
-    fn visit_literal(&self, literal: &Literal) -> T;
-    fn visit_unary(&self, unary: &Unary) -> T;
-    fn visit_ternary(&self, ternary: &Ternary) -> T;
-    fn visit_variable(&self, variable: &Variable) -> T;
+    fn visit_assign(&mut self, assign: &Assign) -> T;
+    fn visit_binary(&mut self, binary: &Binary) -> T;
+    fn visit_grouping(&mut self, grouping: &Grouping) -> T;
+    fn visit_literal(&mut self, literal: &Literal) -> T;
+    fn visit_unary(&mut self, unary: &Unary) -> T;
+    fn visit_ternary(&mut self, ternary: &Ternary) -> T;
+    fn visit_variable(&mut self, variable: &Variable) -> T;
 }
 
 impl Expr {
-    pub fn accept<T, V: Visitor<T>>(&self, visitor: &V) -> T {
+    pub fn accept<T, V: Visitor<T>>(&self, visitor: &mut V) -> T {
         match self {
+            Expr::Assign(assign) => visitor.visit_assign(assign),
             Expr::Binary(binary) => visitor.visit_binary(binary),
             Expr::Grouping(grouping) => visitor.visit_grouping(grouping),
             Expr::Literal(literal) => visitor.visit_literal(literal),
             Expr::Unary(unary) => visitor.visit_unary(unary),
             Expr::Ternary(ternary) => visitor.visit_ternary(ternary),
             Expr::Variable(variable) => visitor.visit_variable(variable),
+        }
+    }
+}
+
+impl Assign {
+    pub fn new(name: Token, value: Expr) -> Assign {
+        Assign {
+            name: Box::new(name),
+            value: Box::new(value),
         }
     }
 }

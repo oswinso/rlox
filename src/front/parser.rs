@@ -1,6 +1,6 @@
 use crate::front::ast_printer::AstPrinter;
 use crate::front::expr::*;
-use crate::front::stmt::{Declaration, Stmt};
+use crate::front::stmt::{Block, Declaration, Stmt};
 use crate::front::token::Token;
 use crate::front::token_type::TokenType;
 use crate::report;
@@ -58,9 +58,22 @@ impl Parser {
     fn statement(&mut self) -> Option<Stmt> {
         if self.match_tokens(vec![TokenType::Print]) {
             self.print_statement()
+        } else if self.match_tokens(vec![TokenType::LeftBrace]) {
+            Some(Stmt::Block(Block::new(self.block())))
         } else {
             self.expression_statement()
         }
+    }
+
+    fn block(&mut self) -> Vec<Stmt> {
+        let mut statements = Vec::new();
+
+        while !self.check(TokenType::RightBrace) && !self.is_at_end() {
+            self.declaration().map(|decl| statements.push(decl));
+        }
+
+        self.consume(TokenType::RightBrace, "Expected '}' after block");
+        statements
     }
 
     fn print_statement(&mut self) -> Option<Stmt> {
@@ -76,7 +89,21 @@ impl Parser {
     }
 
     fn expression(&mut self) -> Option<Expr> {
-        self.ternary()
+        self.assignment()
+    }
+
+    fn assignment(&mut self) -> Option<Expr> {
+        let expr = self.ternary()?;
+
+        if self.match_tokens(vec![TokenType::Equal]) {
+            let equals = self.previous();
+            let value = self.assignment()?;
+
+            if let Expr::Variable(var) = expr {
+                return Some(Expr::Assign(Assign::new(var.name, value)));
+            }
+        }
+        Some(expr)
     }
 
     fn ternary(&mut self) -> Option<Expr> {

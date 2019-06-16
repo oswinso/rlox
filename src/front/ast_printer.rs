@@ -6,11 +6,11 @@ impl AstPrinter {
     pub fn new() -> AstPrinter {
         AstPrinter {}
     }
-    pub fn print(&self, expr: &Expr) -> String {
+    pub fn print(&mut self, expr: &Expr) -> String {
         expr.accept(self)
     }
 
-    fn parenthesize(&self, name: &str, terms: Vec<&Box<Expr>>) -> String {
+    fn parenthesize(&mut self, name: &str, terms: Vec<&Box<Expr>>) -> String {
         let mut strings: Vec<String> = Vec::new();
         strings.reserve(terms.len() * 2 + 2);
 
@@ -27,15 +27,19 @@ impl AstPrinter {
 }
 
 impl Visitor<String> for AstPrinter {
-    fn visit_binary(&self, binary: &Binary) -> String {
+    fn visit_assign(&mut self, assign: &Assign) -> String {
+        self.parenthesize(&format!("{} := ", assign.name.lexeme), vec![&assign.value])
+    }
+
+    fn visit_binary(&mut self, binary: &Binary) -> String {
         self.parenthesize(&binary.operator.lexeme, vec![&binary.left, &binary.right])
     }
 
-    fn visit_grouping(&self, grouping: &Grouping) -> String {
+    fn visit_grouping(&mut self, grouping: &Grouping) -> String {
         self.parenthesize("group", vec![&grouping.expression])
     }
 
-    fn visit_literal(&self, literal: &Literal) -> String {
+    fn visit_literal(&mut self, literal: &Literal) -> String {
         match literal {
             Literal::String(s) => s.to_owned(),
             Literal::Number(num) => num.to_string().to_owned(),
@@ -44,11 +48,11 @@ impl Visitor<String> for AstPrinter {
         }
     }
 
-    fn visit_unary(&self, unary: &Unary) -> String {
+    fn visit_unary(&mut self, unary: &Unary) -> String {
         self.parenthesize(&unary.operator.lexeme, vec![&unary.right])
     }
 
-    fn visit_ternary(&self, ternary: &Ternary) -> String {
+    fn visit_ternary(&mut self, ternary: &Ternary) -> String {
         self.parenthesize(
             "ternary",
             vec![
@@ -59,7 +63,7 @@ impl Visitor<String> for AstPrinter {
         )
     }
 
-    fn visit_variable(&self, variable: &Variable) -> String {
+    fn visit_variable(&mut self, variable: &Variable) -> String {
         variable.name.lexeme.clone()
     }
 }
