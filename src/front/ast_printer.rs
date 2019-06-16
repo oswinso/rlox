@@ -48,6 +48,10 @@ impl Visitor<String> for AstPrinter {
         }
     }
 
+    fn visit_logical(&mut self, logical: &Binary) -> String {
+        self.visit_binary(logical)
+    }
+
     fn visit_unary(&mut self, unary: &Unary) -> String {
         self.parenthesize(&unary.operator.lexeme, vec![&unary.right])
     }

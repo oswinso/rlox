@@ -7,6 +7,7 @@ pub enum Expr {
     Binary(Binary),
     Grouping(Grouping),
     Literal(Literal),
+    Logical(Binary),
     Unary(Unary),
     Ternary(Ternary),
     Variable(Variable),
@@ -65,6 +66,7 @@ pub trait Visitor<T> {
     fn visit_binary(&mut self, binary: &Binary) -> T;
     fn visit_grouping(&mut self, grouping: &Grouping) -> T;
     fn visit_literal(&mut self, literal: &Literal) -> T;
+    fn visit_logical(&mut self, logical: &Binary) -> T;
     fn visit_unary(&mut self, unary: &Unary) -> T;
     fn visit_ternary(&mut self, ternary: &Ternary) -> T;
     fn visit_variable(&mut self, variable: &Variable) -> T;
@@ -77,6 +79,7 @@ impl Expr {
             Expr::Binary(binary) => visitor.visit_binary(binary),
             Expr::Grouping(grouping) => visitor.visit_grouping(grouping),
             Expr::Literal(literal) => visitor.visit_literal(literal),
+            Expr::Logical(logical) => visitor.visit_logical(logical),
             Expr::Unary(unary) => visitor.visit_unary(unary),
             Expr::Ternary(ternary) => visitor.visit_ternary(ternary),
             Expr::Variable(variable) => visitor.visit_variable(variable),

@@ -1,7 +1,7 @@
 use crate::front::expr::{
     self, Assign, Binary, Expr, Grouping, Literal, Ternary, Unary, Value, Variable,
 };
-use crate::front::stmt::{self, Block, Declaration, Stmt};
+use crate::front::stmt::{self, Block, Declaration, If, Stmt, While};
 use crate::front::token::Token;
 use crate::front::token_type::TokenType;
 
@@ -116,12 +116,12 @@ impl Interpreter {
     }
 
     fn handle_negate(&self, token: &Token, value: Value) -> RuntimeResult {
-        Ok(Value::Literal(Literal::Bool(!self.is_truthy(value))))
+        Ok(Value::Literal(Literal::Bool(!self.is_truthy(&value))))
     }
 
-    fn is_truthy(&self, value: Value) -> bool {
+    fn is_truthy(&self, value: &Value) -> bool {
         if let Value::Literal(Literal::Bool(b)) = value {
-            b
+            b.clone()
         } else if let Value::Literal(Literal::Nil) = value {
             false
         } else {
@@ -218,6 +218,22 @@ impl expr::Visitor<RuntimeResult> for Interpreter {
         Ok(Value::Literal(literal.clone()))
     }
 
+    fn visit_logical(&mut self, logical: &Binary) -> RuntimeResult {
+        let left = self.evaluate(&logical.left)?;
+
+        if logical.operator.token_type == TokenType::Or {
+            if self.is_truthy(&left) {
+                return Ok(left);
+            }
+        } else if logical.operator.token_type == TokenType::And {
+            if !self.is_truthy(&left) {
+                return Ok(left);
+            }
+        }
+
+        self.evaluate(&logical.right)
+    }
+
     fn visit_unary(&mut self, unary: &Unary) -> RuntimeResult {
         let right = self.evaluate(&unary.right)?;
         self.handle_unary(&unary.operator, right)
@@ -225,7 +241,7 @@ impl expr::Visitor<RuntimeResult> for Interpreter {
 
     fn visit_ternary(&mut self, ternary: &Ternary) -> RuntimeResult {
         let condition = self.evaluate(&ternary.condition)?;
-        if self.is_truthy(condition) {
+        if self.is_truthy(&condition) {
             self.evaluate(&ternary.true_branch)
         } else {
             self.evaluate(&ternary.false_branch)
@@ -257,6 +273,23 @@ impl stmt::Visitor<Option<Box<RuntimeError>>> for Interpreter {
         }
     }
 
+    fn visit_if(&mut self, if_stmt: &If) -> Option<Box<RuntimeError>> {
+        let res = self.evaluate(&if_stmt.condition);
+        match res {
+            Ok(condition) => {
+                if self.is_truthy(&condition) {
+                    self.execute(&if_stmt.then_branch)
+                } else {
+                    if_stmt
+                        .else_branch
+                        .as_ref()
+                        .and_then(|else_branch| self.execute(&else_branch))
+                }
+            }
+            Err(error) => Some(error),
+        }
+    }
+
     fn visit_print(&mut self, expression: &Expr) -> Option<Box<RuntimeError>> {
         match self.evaluate(expression) {
             Ok(result) => {
@@ -271,10 +304,9 @@ impl stmt::Visitor<Option<Box<RuntimeError>>> for Interpreter {
         let initializer = &declaration.initializer;
 
         let value = match initializer {
-            Some(expr) => self.evaluate(expr),
-            None => Ok(Value::Literal(Literal::Nil)),
+            Some(expr) => self.evaluate(&expr).map(|val| Some(val)),
+            None => Ok(None),
         };
-
         match value {
             Ok(value) => {
                 self.environment
@@ -283,5 +315,22 @@ impl stmt::Visitor<Option<Box<RuntimeError>>> for Interpreter {
             }
             Err(error) => Some(error),
         }
+    }
+
+    fn visit_while(&mut self, while_stmt: &While) -> Option<Box<RuntimeError>> {
+        while {
+            let condition = self.evaluate(&while_stmt.condition);
+            match condition {
+                Ok(value) => self.is_truthy(&value),
+                Err(error) => {
+                    return Some(error);
+                }
+            }
+        } {
+            self.execute(&while_stmt.body).map(|error| {
+                return error;
+            });
+        }
+        None
     }
 }

@@ -1,6 +1,6 @@
 use crate::front::ast_printer::AstPrinter;
 use crate::front::expr::*;
-use crate::front::stmt::{Block, Declaration, Stmt};
+use crate::front::stmt::{Block, Declaration, If, Stmt, While};
 use crate::front::token::Token;
 use crate::front::token_type::TokenType;
 use crate::report;
@@ -60,9 +60,40 @@ impl Parser {
             self.print_statement()
         } else if self.match_tokens(vec![TokenType::LeftBrace]) {
             Some(Stmt::Block(Block::new(self.block())))
+        } else if self.match_tokens(vec![TokenType::If]) {
+            self.if_statement()
+        } else if self.match_tokens(vec![TokenType::While]) {
+            self.while_statement()
         } else {
             self.expression_statement()
         }
+    }
+
+    fn while_statement(&mut self) -> Option<Stmt> {
+        self.consume(TokenType::LeftParen, "Expected '(' after 'while'.");
+        let condition = self.expression()?;
+        self.consume(
+            TokenType::RightParen,
+            "Expected ')' after 'while' condition.",
+        );
+        let body = self.statement()?;
+
+        Some(Stmt::While(While::new(condition, body)))
+    }
+
+    fn if_statement(&mut self) -> Option<Stmt> {
+        self.consume(TokenType::LeftParen, "Expected '(' after 'if'.");
+        let condition = self.expression()?;
+        self.consume(TokenType::RightParen, "Expected ')' after 'if' condition.");
+
+        let then_branch = self.statement()?;
+        let else_branch = if self.match_tokens(vec![TokenType::Else]) {
+            self.statement()
+        } else {
+            None
+        };
+
+        Some(Stmt::If(If::new(condition, then_branch, else_branch)))
     }
 
     fn block(&mut self) -> Vec<Stmt> {
@@ -107,11 +138,11 @@ impl Parser {
     }
 
     fn ternary(&mut self) -> Option<Expr> {
-        let condition = self.equality()?;
+        let condition = self.or()?;
 
         if self.match_tokens(vec![TokenType::QuestionMark]) {
             let question_mark: Token = self.previous().clone();
-            let true_branch = self.equality()?;
+            let true_branch = self.or()?;
 
             if self.match_tokens(vec![TokenType::Colon]) {
                 let colon: Token = self.previous().clone();
@@ -124,6 +155,28 @@ impl Parser {
             }
         }
         Some(condition)
+    }
+
+    fn or(&mut self) -> Option<Expr> {
+        let mut expr = self.and()?;
+
+        while self.match_tokens(vec![TokenType::Or]) {
+            let operator = self.previous().clone();
+            let right = self.and()?;
+            expr = Expr::Logical(Binary::new(expr, operator, right));
+        }
+        Some(expr)
+    }
+
+    fn and(&mut self) -> Option<Expr> {
+        let mut expr = self.equality()?;
+
+        while self.match_tokens(vec![TokenType::And]) {
+            let operator = self.previous().clone();
+            let right = self.equality()?;
+            expr = Expr::Logical(Binary::new(expr, operator, right));
+        }
+        Some(expr)
     }
 
     fn equality(&mut self) -> Option<Expr> {
