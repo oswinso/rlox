@@ -4,15 +4,15 @@ use std::fmt;
 
 #[derive(Debug)]
 pub struct ComposedError {
-    errors: Vec<Box<RuntimeError>>,
+    errors: Vec<Box<dyn RuntimeError>>,
 }
 
 impl ComposedError {
-    pub fn new(errors: Vec<Box<RuntimeError>>) -> ComposedError {
+    pub fn new(errors: Vec<Box<dyn RuntimeError>>) -> ComposedError {
         ComposedError { errors }
     }
 
-    pub fn from(errors: Vec<Box<RuntimeError>>) -> Option<Box<RuntimeError>> {
+    pub fn from(errors: Vec<Box<dyn RuntimeError>>) -> Option<Box<dyn RuntimeError>> {
         if errors.is_empty() {
             None
         } else {

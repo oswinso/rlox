@@ -37,9 +37,14 @@ impl Visitor<String> for AstPrinter {
     }
 
     fn visit_call(&mut self, call: &Call) -> String {
-        let mut terms : Vec<&Box<Expr>> = vec![&call.callee];
-        let extend : Vec<Box<Expr>> = call.arguments.iter().clone().map(|a|Box::new(a.clone())).collect();
-        let rip: Vec<&Box<Expr>> = extend.iter().map(|lmao|lmao).collect();
+        let mut terms: Vec<&Box<Expr>> = vec![&call.callee];
+        let extend: Vec<Box<Expr>> = call
+            .arguments
+            .iter()
+            .clone()
+            .map(|a| Box::new(a.clone()))
+            .collect();
+        let rip: Vec<&Box<Expr>> = extend.iter().map(|lmao| lmao).collect();
         terms.extend(rip);
         self.parenthesize("call", terms)
     }

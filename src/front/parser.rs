@@ -1,9 +1,9 @@
-use crate::front::ast_printer::AstPrinter;
+
 use crate::front::expr::*;
-use crate::front::stmt::{Block, Declaration, If, Stmt, While};
+use crate::front::stmt::{Block, Declaration, FunctionDecl, If, Stmt, While};
 use crate::front::token::Token;
 use crate::front::token_type::TokenType;
-use crate::{report, error};
+use crate::{error, report};
 
 pub struct Parser {
     tokens: Vec<Token>,
@@ -27,6 +27,8 @@ impl Parser {
     fn declaration(&mut self) -> Option<Stmt> {
         let res = if self.match_tokens(vec![TokenType::Let]) {
             self.variable_declaration()
+        } else if self.match_tokens(vec![TokenType::Fun]) {
+            self.function("function")
         } else {
             self.statement()
         };
@@ -34,6 +36,38 @@ impl Parser {
             self.synchronize();
         }
         res
+    }
+
+    fn function(&mut self, kind: &str) -> Option<Stmt> {
+        let name = self.consume(
+            TokenType::Identifier("".into()),
+            &format!("Expected {} name", kind),
+        )?.clone();
+        let mut parameters = Vec::new();
+        self.consume(TokenType::LeftParen, "Expected '(' after function declaration");
+        if !self.check(TokenType::RightParen) {
+            while {
+                if parameters.len() >= 8 {
+                    error(self.peek().line, "Cannot have more than 8 parameters");
+                }
+
+                parameters.push(
+                    self.consume(TokenType::Identifier("".into()), "Expected parameter name")?
+                        .clone(),
+                );
+                self.match_tokens(vec![TokenType::Comma])
+            } {}
+        }
+        self.consume(TokenType::RightParen, "Expected ')' after parameters");
+
+        self.consume(
+            TokenType::LeftBrace,
+            &format!("Expected '{{' before {} body.", kind),
+        );
+
+        let body = self.block();
+
+        Some(Stmt::Function(FunctionDecl::new(&name, parameters, body)))
     }
 
     fn variable_declaration(&mut self) -> Option<Stmt> {
@@ -305,7 +339,10 @@ impl Parser {
             } {}
         }
 
-        let paren = self.consume(TokenType::RightParen, "Expected ')' after function call arguments")?;
+        let paren = self.consume(
+            TokenType::RightParen,
+            "Expected ')' after function call arguments",
+        )?;
         Some(Expr::Call(Call::new(callee, paren.clone(), arguments)))
     }
 

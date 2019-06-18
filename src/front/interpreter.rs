@@ -1,29 +1,32 @@
 use crate::front::expr::{
     self, Assign, Binary, Call, Expr, Grouping, Literal, Ternary, Unary, Value, Variable,
 };
-use crate::front::stmt::{self, Block, Declaration, If, Stmt, While};
+use crate::front::stmt::{self, Block, Declaration, If, Stmt, While, FunctionDecl};
 use crate::front::token::Token;
 use crate::front::token_type::TokenType;
 
-use crate::front::errors::{ComposedError, RuntimeError, TypeError, IncorrectArgumentsError};
+use crate::front::errors::{ComposedError, IncorrectArgumentsError, RuntimeError, TypeError};
 
-use crate::front::callables::{Callable, Clock};
+use crate::front::callables::{Callable, Clock, Function};
 use crate::front::environment::Environment;
 use crate::runtime_error;
 use std::rc::Rc;
 
 pub struct Interpreter {
-    environment: Environment,
+    pub globals: Environment,
+    pub environment: Environment,
 }
 
-type RuntimeResult = Result<Value, Box<RuntimeError>>;
+type RuntimeResult = Result<Value, Box<dyn RuntimeError>>;
 
 impl Interpreter {
     pub fn new() -> Interpreter {
         let mut interpreter = Interpreter {
-            environment: Environment::new(),
+            globals: Environment::new(),
+            environment: Environment::empty_env(),
         };
         interpreter.define_globals();
+        interpreter.environment.clone_from(&interpreter.globals);
         interpreter
     }
 
@@ -31,7 +34,8 @@ impl Interpreter {
         let funcs: Vec<Rc<Box<dyn Callable>>> = vec![Clock::new()];
 
         for callable in funcs {
-            self.environment.define(callable.name().to_owned(), Some(Value::Callable(callable)))
+            self.environment
+                .define(callable.name().to_owned(), Some(Value::Callable(callable)))
         }
     }
 
@@ -43,20 +47,26 @@ impl Interpreter {
         }
     }
 
-    fn evaluate(&mut self, expr: &Expr) -> RuntimeResult {
+    pub fn evaluate(&mut self, expr: &Expr) -> RuntimeResult {
         expr.accept(self)
     }
 
-    fn execute(&mut self, stmt: &Stmt) -> Option<Box<RuntimeError>> {
+    pub fn execute(&mut self, stmt: &Stmt) -> Option<Box<dyn RuntimeError>> {
         stmt.accept(self)
     }
 
-    fn execute_block<'b>(&mut self, statements: &Vec<Stmt>) -> Option<Box<RuntimeError>> {
-        let error_vec: Vec<Box<RuntimeError>> = statements
+    pub fn execute_block(&mut self, statements: &Vec<Stmt>, mut environment: Option<Environment>) -> Option<Box<dyn RuntimeError>> {
+        if let Some(ref mut env) = environment {
+            self.environment.swap(env);
+        }
+        let error_vec: Vec<Box<dyn RuntimeError>> = statements
             .iter()
             .map(|statement| self.execute(statement))
             .flatten()
             .collect();
+        if let Some(ref mut env) = environment {
+            self.environment.swap(env);
+        }
         ComposedError::from(error_vec)
     }
 
@@ -149,7 +159,7 @@ impl Interpreter {
                 (Literal::Number(left), Literal::Number(right)) => left == right,
                 _ => false,
             },
-            _ => false
+            _ => false,
         }
     }
 
@@ -211,7 +221,7 @@ impl Interpreter {
 }
 
 impl expr::Visitor<RuntimeResult> for Interpreter {
-    fn visit_assign(&mut self, assign: &Assign) -> Result<Value, Box<RuntimeError>> {
+    fn visit_assign(&mut self, assign: &Assign) -> Result<Value, Box<dyn RuntimeError>> {
         let value = self.evaluate(&assign.value)?;
         self.environment.assign(&assign.name, value.clone());
         Ok(value)
@@ -235,11 +245,18 @@ impl expr::Visitor<RuntimeResult> for Interpreter {
         match callee {
             Value::Callable(callable) => {
                 if arguments.len() != callable.arity() {
-                    return Err(IncorrectArgumentsError::new(*call.paren.clone(), callable.arity(), arguments.len()).into())
+                    return Err(IncorrectArgumentsError::new(
+                        *call.paren.clone(),
+                        callable.arity(),
+                        arguments.len(),
+                    )
+                    .into());
                 }
                 Ok(callable.call(self, arguments))
-            },
-            _ => Err(TypeError::new(*call.paren.clone(), "Can only call functions and classes!").into())
+            }
+            _ => Err(
+                TypeError::new(*call.paren.clone(), "Can only call functions and classes!").into(),
+            ),
         }
     }
 
@@ -286,19 +303,22 @@ impl expr::Visitor<RuntimeResult> for Interpreter {
     }
 }
 
-impl stmt::Visitor<Option<Box<RuntimeError>>> for Interpreter {
-    fn visit_block(&mut self, block: &Block) -> Option<Box<RuntimeError>> {
+impl stmt::Visitor<Option<Box<dyn RuntimeError>>> for Interpreter {
+    fn visit_block(&mut self, block: &Block) -> Option<Box<dyn RuntimeError>> {
         self.environment.push();
-        let res = self.execute_block(&block.statements);
+        let res = self.execute_block(&block.statements, None);
         self.environment.pop();
         res
     }
 
-    fn visit_expression(&mut self, expression: &Expr) -> Option<Box<RuntimeError>> {
+    fn visit_expression(&mut self, expression: &Expr) -> Option<Box<dyn RuntimeError>> {
         match self.evaluate(expression) {
             Ok(val) => match val {
                 Value::Literal(literal) => {
-                    println!("{}", literal);
+                    match literal {
+                        Literal::Nil => (),
+                        _ => println!("{}", literal)
+                    };
                     None
                 }
                 Value::Callable(callable) => {
@@ -310,7 +330,14 @@ impl stmt::Visitor<Option<Box<RuntimeError>>> for Interpreter {
         }
     }
 
-    fn visit_if(&mut self, if_stmt: &If) -> Option<Box<RuntimeError>> {
+    fn visit_function(&mut self, function_decl: &FunctionDecl) -> Option<Box<dyn RuntimeError>> {
+        let function = Function::new(function_decl.clone());
+        let callable = Value::Callable(Rc::new(Box::new(function)));
+        self.environment.define(function_decl.name.lexeme.clone(), Some(callable));
+        None
+    }
+
+    fn visit_if(&mut self, if_stmt: &If) -> Option<Box<dyn RuntimeError>> {
         let res = self.evaluate(&if_stmt.condition);
         match res {
             Ok(condition) => {
@@ -327,7 +354,7 @@ impl stmt::Visitor<Option<Box<RuntimeError>>> for Interpreter {
         }
     }
 
-    fn visit_print(&mut self, expression: &Expr) -> Option<Box<RuntimeError>> {
+    fn visit_print(&mut self, expression: &Expr) -> Option<Box<dyn RuntimeError>> {
         match self.evaluate(expression) {
             Ok(result) => {
                 println!("{}", result);
@@ -337,7 +364,7 @@ impl stmt::Visitor<Option<Box<RuntimeError>>> for Interpreter {
         }
     }
 
-    fn visit_declaration(&mut self, declaration: &Declaration) -> Option<Box<RuntimeError>> {
+    fn visit_declaration(&mut self, declaration: &Declaration) -> Option<Box<dyn RuntimeError>> {
         let initializer = &declaration.initializer;
 
         let value = match initializer {
@@ -354,7 +381,7 @@ impl stmt::Visitor<Option<Box<RuntimeError>>> for Interpreter {
         }
     }
 
-    fn visit_while(&mut self, while_stmt: &While) -> Option<Box<RuntimeError>> {
+    fn visit_while(&mut self, while_stmt: &While) -> Option<Box<dyn RuntimeError>> {
         while {
             let condition = self.evaluate(&while_stmt.condition);
             match condition {

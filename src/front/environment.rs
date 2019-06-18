@@ -4,10 +4,15 @@ use crate::front::errors::{RuntimeError, UndefinedVariableError};
 use crate::front::expr::{Literal, Value};
 use crate::front::token::Token;
 use crate::front::token_type::TokenType;
+use std::cell::RefCell;
+use std::rc::Rc;
 
+#[derive(Clone)]
 pub struct Environment {
-    head: Option<Box<ScopedEnvironment>>,
+    head: Link,
 }
+
+type Link = Option<Rc<RefCell<ScopedEnvironment>>>;
 
 pub struct Variable {
     pub defined: bool,
@@ -37,42 +42,67 @@ impl Variable {
 
 pub struct ScopedEnvironment {
     values: HashMap<String, Variable>,
-    parent: Option<Box<ScopedEnvironment>>,
+    parent: Link,
 }
 
 impl Environment {
     pub fn new() -> Environment {
-        let mut env = Environment { head: None };
+        let mut env = Environment {
+            head: None,
+        };
         env.push();
         env
     }
 
+    pub fn empty_env() -> Environment {
+        let mut env = Environment {
+            head: None,
+        };
+        env
+    }
+
+    /// Swaps the head with other
+    pub fn swap(&mut self, other: &mut Environment) {
+        std::mem::swap(&mut self.head, &mut other.head);
+    }
+
     pub fn push(&mut self) {
-        let scoped_environment = Box::new(ScopedEnvironment::new(self.head.take()));
-        self.head = Some(scoped_environment);
+        let new_node = Rc::new(RefCell::new(ScopedEnvironment::new(None)));
+        match self.head.take() {
+            Some(old_head) => {
+                new_node.borrow_mut().parent = Some(old_head);
+                self.head = Some(new_node)
+            },
+            None => self.head = Some(new_node)
+        }
     }
 
     pub fn pop(&mut self) {
-        self.head.take().map(|env| {
-            self.head = env.parent;
+        self.head.take().map(|old_head| {
+            match old_head.borrow_mut().parent.take() {
+                Some(new_head) => {
+                    self.head = Some(new_head)
+                },
+                None => panic!("Tried to remove global env")
+            }
         });
     }
 
     pub fn define(&mut self, name: String, value: Option<Value>) {
-        self.head.as_mut().map(|env| env.define(name, value));
+        self.head.as_mut().map(|env| env.borrow_mut().define(name, value));
     }
 
-    pub fn assign(&mut self, token: &Token, value: Value) -> Option<Box<RuntimeError>> {
-        self.head.as_mut().unwrap().assign(token, value)
+    pub fn assign(&mut self, token: &Token, value: Value) -> Option<Box<dyn RuntimeError>> {
+        self.head.as_mut().unwrap().borrow_mut().assign(token, value)
     }
 
-    pub fn get(&self, token: &Token) -> Result<Value, Box<RuntimeError>> {
-        self.head.as_ref().unwrap().get(token)
+    pub fn get(&self, token: &Token) -> Result<Value, Box<dyn RuntimeError>> {
+        self.head.as_ref().unwrap().borrow().get(token)
     }
 }
 
 impl ScopedEnvironment {
-    pub fn new(parent: Option<Box<ScopedEnvironment>>) -> ScopedEnvironment {
+    pub fn new(parent: Link) -> ScopedEnvironment {
         ScopedEnvironment {
             values: HashMap::new(),
             parent,
@@ -86,18 +116,18 @@ impl ScopedEnvironment {
         };
     }
 
-    pub fn assign(&mut self, token: &Token, value: Value) -> Option<Box<RuntimeError>> {
+    pub fn assign(&mut self, token: &Token, value: Value) -> Option<Box<dyn RuntimeError>> {
         if self.values.contains_key(&token.lexeme) {
             self.values.get_mut(&token.lexeme).unwrap().assign(value);
             None
         } else if let Some(parent) = self.parent.as_mut() {
-            parent.assign(token, value)
+            parent.borrow_mut().assign(token, value)
         } else {
             Some(UndefinedVariableError::new(token.clone()).into())
         }
     }
 
-    pub fn get(&self, token: &Token) -> Result<Value, Box<RuntimeError>> {
+    pub fn get(&self, token: &Token) -> Result<Value, Box<dyn RuntimeError>> {
         if let TokenType::Identifier(name) = &token.token_type {
             if let Some(variable) = self.values.get(name) {
                 if variable.defined {
@@ -106,7 +136,7 @@ impl ScopedEnvironment {
                     Err(UndefinedVariableError::new(token.clone()).into())
                 }
             } else if let Some(parent) = self.parent.as_ref() {
-                parent.get(token)
+                parent.borrow().get(token)
             } else {
                 Err(UndefinedVariableError::new(token.clone()).into())
             }

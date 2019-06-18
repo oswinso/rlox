@@ -5,10 +5,17 @@ use crate::front::token::Token;
 pub enum Stmt {
     Block(Block),
     Expression(Expr),
+    Function(FunctionDecl),
     If(If),
     Print(Expr),
     While(While),
     Declaration(Declaration),
+}
+#[derive(Debug, Clone)]
+pub struct FunctionDecl {
+    pub name: Box<Token>,
+    pub params: Vec<Token>,
+    pub body: Vec<Stmt>,
 }
 
 #[derive(Debug, Clone)]
@@ -38,6 +45,7 @@ pub struct Declaration {
 pub trait Visitor<T> {
     fn visit_block(&mut self, block: &Block) -> T;
     fn visit_expression(&mut self, expression: &Expr) -> T;
+    fn visit_function(&mut self, function: &FunctionDecl) -> T;
     fn visit_if(&mut self, if_stmt: &If) -> T;
     fn visit_print(&mut self, expression: &Expr) -> T;
     fn visit_declaration(&mut self, declaration: &Declaration) -> T;
@@ -49,6 +57,7 @@ impl Stmt {
         match self {
             Stmt::Block(block) => visitor.visit_block(block),
             Stmt::Expression(expr) => visitor.visit_expression(expr),
+            Stmt::Function(function) => visitor.visit_function(function),
             Stmt::If(if_stmt) => visitor.visit_if(if_stmt),
             Stmt::Print(expr) => visitor.visit_print(expr),
             Stmt::Declaration(declaration) => visitor.visit_declaration(declaration),
@@ -78,6 +87,16 @@ impl While {
         While {
             condition: Box::new(condition),
             body: Box::new(body),
+        }
+    }
+}
+
+impl FunctionDecl {
+    pub fn new(name: &Token, params: Vec<Token>, body: Vec<Stmt>) -> Self {
+        FunctionDecl {
+            name: Box::new(name.clone()),
+            params,
+            body,
         }
     }
 }

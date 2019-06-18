@@ -6,12 +6,16 @@ use std::fmt;
 pub struct IncorrectArgumentsError {
     token: Token,
     expected_num: usize,
-    actual_num: usize
+    actual_num: usize,
 }
 
 impl IncorrectArgumentsError {
     pub fn new(token: Token, expected_num: usize, actual_num: usize) -> Self {
-        IncorrectArgumentsError { token, expected_num, actual_num }
+        IncorrectArgumentsError {
+            token,
+            expected_num,
+            actual_num,
+        }
     }
 }
 

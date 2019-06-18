@@ -1,7 +1,7 @@
-use crate::front::token::Token;
-use std::fmt;
 use crate::front::callables::Callable;
-use std::cell::RefCell;
+use crate::front::token::Token;
+
+use std::fmt;
 use std::rc::Rc;
 
 #[derive(Debug, Clone)]
@@ -59,7 +59,7 @@ pub enum Literal {
 #[derive(Debug, PartialEq, Clone)]
 pub enum Value {
     Literal(Literal),
-    Callable(Rc<Box<dyn Callable>>)
+    Callable(Rc<Box<dyn Callable>>),
 }
 
 #[derive(Debug, Clone)]
@@ -125,7 +125,7 @@ impl Call {
         Call {
             callee: Box::new(callee),
             paren: Box::new(paren),
-            arguments
+            arguments,
         }
     }
 }
@@ -172,7 +172,7 @@ impl fmt::Display for Value {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Value::Literal(literal) => write!(f, "{}", literal),
-            Value::Callable(c) => write!(f, "{}", c)
+            Value::Callable(c) => write!(f, "{}", c),
         }
     }
 }
