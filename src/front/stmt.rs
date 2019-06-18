@@ -8,9 +8,16 @@ pub enum Stmt {
     Function(FunctionDecl),
     If(If),
     Print(Expr),
+    Return(Return),
     While(While),
     Declaration(Declaration),
 }
+#[derive(Debug, Clone)]
+pub struct Return {
+    pub keyword: Box<Token>,
+    pub value: Option<Box<Expr>>
+}
+
 #[derive(Debug, Clone)]
 pub struct FunctionDecl {
     pub name: Box<Token>,
@@ -48,6 +55,7 @@ pub trait Visitor<T> {
     fn visit_function(&mut self, function: &FunctionDecl) -> T;
     fn visit_if(&mut self, if_stmt: &If) -> T;
     fn visit_print(&mut self, expression: &Expr) -> T;
+    fn visit_return(&mut self, ret: &Return) -> T;
     fn visit_declaration(&mut self, declaration: &Declaration) -> T;
     fn visit_while(&mut self, while_stmt: &While) -> T;
 }
@@ -60,6 +68,7 @@ impl Stmt {
             Stmt::Function(function) => visitor.visit_function(function),
             Stmt::If(if_stmt) => visitor.visit_if(if_stmt),
             Stmt::Print(expr) => visitor.visit_print(expr),
+            Stmt::Return(ret) => visitor.visit_return(ret),
             Stmt::Declaration(declaration) => visitor.visit_declaration(declaration),
             Stmt::While(while_stmt) => visitor.visit_while(while_stmt),
         }
@@ -97,6 +106,15 @@ impl FunctionDecl {
             name: Box::new(name.clone()),
             params,
             body,
+        }
+    }
+}
+
+impl Return {
+    pub fn new(keyword: Token, value: Option<Expr>) -> Return {
+        Return {
+            keyword: Box::new(keyword),
+            value: value.map(|x|Box::new(x))
         }
     }
 }

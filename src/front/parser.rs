@@ -1,6 +1,6 @@
 
 use crate::front::expr::*;
-use crate::front::stmt::{Block, Declaration, FunctionDecl, If, Stmt, While};
+use crate::front::stmt::{Block, Declaration, FunctionDecl, If, Stmt, While, Return};
 use crate::front::token::Token;
 use crate::front::token_type::TokenType;
 use crate::{error, report};
@@ -100,9 +100,22 @@ impl Parser {
             self.while_statement()
         } else if self.match_tokens(vec![TokenType::For]) {
             self.for_statement()
+        } else if self.match_tokens(vec![TokenType::Return]) {
+            self.return_statement()
         } else {
             self.expression_statement()
         }
+    }
+
+    fn return_statement(&mut self) -> Option<Stmt> {
+        let keyword = self.previous().clone();
+        let value =  if !self.check(TokenType::Semicolon) {
+            Some(self.expression()?)
+        } else {
+            None
+        };
+        self.consume(TokenType::Semicolon, "Expected ';' after return");
+        Some(Stmt::Return(Return::new(keyword, value)))
     }
 
     fn for_statement(&mut self) -> Option<Stmt> {

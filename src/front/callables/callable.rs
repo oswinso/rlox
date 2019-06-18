@@ -2,11 +2,12 @@ use crate::front::expr::Value;
 use crate::front::interpreter::Interpreter;
 
 use std::fmt;
+use crate::front::errors::RuntimeError;
 
 pub trait Callable: std::fmt::Display {
     fn name(&self) -> &str;
     fn arity(&self) -> usize;
-    fn call(&self, interpreter: &mut Interpreter, arguments: Vec<Value>) -> Value;
+    fn call(&self, interpreter: &mut Interpreter, arguments: Vec<Value>) -> Result<Value, Box<dyn RuntimeError>>;
 }
 
 impl PartialEq for dyn Callable {

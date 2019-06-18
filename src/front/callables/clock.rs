@@ -5,6 +5,7 @@ use crate::front::interpreter::Interpreter;
 use std::fmt;
 use std::rc::Rc;
 use std::time::{SystemTime, UNIX_EPOCH};
+use crate::front::errors::RuntimeError;
 
 pub struct Clock {
     name: String,
@@ -20,10 +21,10 @@ impl Callable for Clock {
         self.arity
     }
 
-    fn call(&self, interpreter: &mut Interpreter, arguments: Vec<Value>) -> Value {
+    fn call(&self, interpreter: &mut Interpreter, arguments: Vec<Value>) -> Result<Value, Box<RuntimeError>> {
         let now = SystemTime::now();
         let since_epoch = now.duration_since(UNIX_EPOCH).unwrap();
-        Value::Literal(since_epoch.as_secs_f64().into())
+        Ok(Value::Literal(since_epoch.as_secs_f64().into()))
     }
 }
 

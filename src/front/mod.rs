@@ -15,3 +15,6 @@ pub mod stmt;
 pub mod environment;
 
 pub mod callables;
+
+pub mod return_object;
+pub mod statement_result;

@@ -1,7 +1,7 @@
 use crate::front::expr::{
     self, Assign, Binary, Call, Expr, Grouping, Literal, Ternary, Unary, Value, Variable,
 };
-use crate::front::stmt::{self, Block, Declaration, If, Stmt, While, FunctionDecl};
+use crate::front::stmt::{self, Block, Declaration, If, Stmt, While, FunctionDecl, Return};
 use crate::front::token::Token;
 use crate::front::token_type::TokenType;
 
@@ -11,6 +11,8 @@ use crate::front::callables::{Callable, Clock, Function};
 use crate::front::environment::Environment;
 use crate::runtime_error;
 use std::rc::Rc;
+use crate::front::statement_result::StatementResult;
+use crate::front::return_object::ReturnObject;
 
 pub struct Interpreter {
     pub globals: Environment,
@@ -41,8 +43,10 @@ impl Interpreter {
 
     pub fn interpret(&mut self, stmts: &Vec<Stmt>) {
         for stmt in stmts {
-            if let Some(error) = self.execute(stmt) {
-                runtime_error(error)
+            if let Some(res) = self.execute(stmt) {
+                if let StatementResult::RuntimeError(error) = res {
+                    runtime_error(error)
+                }
             }
         }
     }
@@ -51,23 +55,26 @@ impl Interpreter {
         expr.accept(self)
     }
 
-    pub fn execute(&mut self, stmt: &Stmt) -> Option<Box<dyn RuntimeError>> {
+    pub fn execute(&mut self, stmt: &Stmt) -> Option<StatementResult> {
         stmt.accept(self)
     }
 
-    pub fn execute_block(&mut self, statements: &Vec<Stmt>, mut environment: Option<Environment>) -> Option<Box<dyn RuntimeError>> {
+    pub fn execute_block(&mut self, statements: &Vec<Stmt>, mut environment: Option<Environment>) -> Option<StatementResult> {
         if let Some(ref mut env) = environment {
             self.environment.swap(env);
         }
-        let error_vec: Vec<Box<dyn RuntimeError>> = statements
-            .iter()
-            .map(|statement| self.execute(statement))
-            .flatten()
-            .collect();
+        for statement in statements {
+            if let Some(result) = self.execute(statement) {
+                if let Some(ref mut env) = environment {
+                    self.environment.swap(env);
+                }
+                return Some(result);
+            }
+        }
         if let Some(ref mut env) = environment {
             self.environment.swap(env);
         }
-        ComposedError::from(error_vec)
+        None
     }
 
     fn handle_unary(&self, token: &Token, value: Value) -> RuntimeResult {
@@ -252,7 +259,7 @@ impl expr::Visitor<RuntimeResult> for Interpreter {
                     )
                     .into());
                 }
-                Ok(callable.call(self, arguments))
+                callable.call(self, arguments)
             }
             _ => Err(
                 TypeError::new(*call.paren.clone(), "Can only call functions and classes!").into(),
@@ -303,15 +310,15 @@ impl expr::Visitor<RuntimeResult> for Interpreter {
     }
 }
 
-impl stmt::Visitor<Option<Box<dyn RuntimeError>>> for Interpreter {
-    fn visit_block(&mut self, block: &Block) -> Option<Box<dyn RuntimeError>> {
+impl stmt::Visitor<Option<StatementResult>> for Interpreter {
+    fn visit_block(&mut self, block: &Block) -> Option<StatementResult> {
         self.environment.push();
         let res = self.execute_block(&block.statements, None);
         self.environment.pop();
-        res
+        res.map(StatementResult::from)
     }
 
-    fn visit_expression(&mut self, expression: &Expr) -> Option<Box<dyn RuntimeError>> {
+    fn visit_expression(&mut self, expression: &Expr) -> Option<StatementResult> {
         match self.evaluate(expression) {
             Ok(val) => match val {
                 Value::Literal(literal) => {
@@ -326,45 +333,55 @@ impl stmt::Visitor<Option<Box<dyn RuntimeError>>> for Interpreter {
                     None
                 }
             },
-            Err(error) => Some(error),
+            Err(error) => Some(error.into()),
         }
     }
 
-    fn visit_function(&mut self, function_decl: &FunctionDecl) -> Option<Box<dyn RuntimeError>> {
+    fn visit_function(&mut self, function_decl: &FunctionDecl) -> Option<StatementResult> {
         let function = Function::new(function_decl.clone());
         let callable = Value::Callable(Rc::new(Box::new(function)));
         self.environment.define(function_decl.name.lexeme.clone(), Some(callable));
         None
     }
 
-    fn visit_if(&mut self, if_stmt: &If) -> Option<Box<dyn RuntimeError>> {
+    fn visit_if(&mut self, if_stmt: &If) -> Option<StatementResult> {
         let res = self.evaluate(&if_stmt.condition);
         match res {
             Ok(condition) => {
                 if self.is_truthy(&condition) {
-                    self.execute(&if_stmt.then_branch)
+                    self.execute(&if_stmt.then_branch).map(|x|x.into())
                 } else {
                     if_stmt
                         .else_branch
                         .as_ref()
                         .and_then(|else_branch| self.execute(&else_branch))
+                        .map(|x|x.into())
                 }
             }
-            Err(error) => Some(error),
+            Err(error) => Some(error.into()),
         }
     }
 
-    fn visit_print(&mut self, expression: &Expr) -> Option<Box<dyn RuntimeError>> {
+    fn visit_print(&mut self, expression: &Expr) -> Option<StatementResult> {
         match self.evaluate(expression) {
             Ok(result) => {
                 println!("{}", result);
                 None
             }
-            Err(error) => Some(error),
+            Err(error) => Some(error.into()),
         }
     }
 
-    fn visit_declaration(&mut self, declaration: &Declaration) -> Option<Box<dyn RuntimeError>> {
+    fn visit_return(&mut self, ret: &Return) -> Option<StatementResult> {
+        let value = ret.value.as_ref().map_or(Ok(Value::Literal(Literal::Nil)), |expr|self.evaluate(&expr));
+
+        match value {
+            Ok(value) => Some(ReturnObject::new(value).into()),
+            Err(error) => Some(error.into())
+        }
+    }
+
+    fn visit_declaration(&mut self, declaration: &Declaration) -> Option<StatementResult> {
         let initializer = &declaration.initializer;
 
         let value = match initializer {
@@ -377,17 +394,17 @@ impl stmt::Visitor<Option<Box<dyn RuntimeError>>> for Interpreter {
                     .define(declaration.name.lexeme.clone(), value.clone());
                 None
             }
-            Err(error) => Some(error),
+            Err(error) => Some(error.into()),
         }
     }
 
-    fn visit_while(&mut self, while_stmt: &While) -> Option<Box<dyn RuntimeError>> {
+    fn visit_while(&mut self, while_stmt: &While) -> Option<StatementResult> {
         while {
             let condition = self.evaluate(&while_stmt.condition);
             match condition {
                 Ok(value) => self.is_truthy(&value),
                 Err(error) => {
-                    return Some(error);
+                    return Some(error.into());
                 }
             }
         } {
