@@ -29,7 +29,10 @@ impl AstPrinter {
 
 impl Visitor<String> for AstPrinter {
     fn visit_assign(&mut self, assign: &Assign) -> String {
-        self.parenthesize(&format!("{} := ", assign.name.lexeme), vec![&assign.value])
+        self.parenthesize(
+            &format!("{} := ", assign.variable.name.lexeme),
+            vec![&assign.value],
+        )
     }
 
     fn visit_binary(&mut self, binary: &Binary) -> String {

@@ -1,4 +1,4 @@
-use crate::front::errors::{RuntimeError, ComposedError};
+use crate::front::errors::{ComposedError, RuntimeError};
 use crate::front::return_object::ReturnObject;
 
 use std::fmt;
@@ -7,7 +7,7 @@ use std::fmt;
 pub enum StatementResult {
     RuntimeError(Box<dyn RuntimeError>),
     Return(ReturnObject),
-    Break
+    Break,
 }
 
 impl From<Box<dyn RuntimeError>> for StatementResult {
@@ -36,13 +36,18 @@ impl StatementResult {
                 return Some(StatementResult::Return(return_object.clone()));
             }
         }
-        let errors: Vec<Box<dyn RuntimeError>> = vec.into_iter().filter_map(|res| {
-            if let StatementResult::RuntimeError(error) = res {
-                Some(error)
-            } else {
-                None
-            }
-        }).collect();
-        Some(StatementResult::RuntimeError(Box::new(ComposedError::new(errors))))
+        let errors: Vec<Box<dyn RuntimeError>> = vec
+            .into_iter()
+            .filter_map(|res| {
+                if let StatementResult::RuntimeError(error) = res {
+                    Some(error)
+                } else {
+                    None
+                }
+            })
+            .collect();
+        Some(StatementResult::RuntimeError(Box::new(ComposedError::new(
+            errors,
+        ))))
     }
 }

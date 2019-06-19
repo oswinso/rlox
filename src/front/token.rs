@@ -1,9 +1,8 @@
-
 use crate::front::token_type::TokenType;
 
 use std::fmt;
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 pub struct Token {
     pub token_type: TokenType,
     pub lexeme: String,

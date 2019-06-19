@@ -14,6 +14,7 @@ use crate::front::scanner::Scanner;
 
 use crate::front::token::Token;
 use crate::front::token_type::TokenType;
+use crate::front::resolver::Resolver;
 
 static mut HAD_ERROR: bool = false;
 static mut HAD_RUNTIME_ERROR: bool = false;
@@ -94,7 +95,7 @@ fn run(source: &str, interpreter: &mut Interpreter) {
     //    println!("{:?}", tokens);
 
     let mut parser = Parser::new(tokens);
-    let stmts = parser.parse();
+    let mut stmts = parser.parse();
 
     //    for stmt in &stmts {
     //        let exprs: Vec<&Expr> = match stmt {
@@ -107,6 +108,9 @@ fn run(source: &str, interpreter: &mut Interpreter) {
     //            println!("{}", AstPrinter::new().print(expr));
     //        }
     //    }
+
+    let mut resolver = Resolver::new();
+    resolver.resolve(&mut stmts);
 
     interpreter.interpret(&stmts);
 }

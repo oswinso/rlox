@@ -1,6 +1,5 @@
-
 use crate::front::expr::*;
-use crate::front::stmt::{Block, Declaration, FunctionDecl, If, Stmt, While, Return};
+use crate::front::stmt::{Block, Declaration, FunctionDecl, If, Return, Stmt, While};
 use crate::front::token::Token;
 use crate::front::token_type::TokenType;
 use crate::{error, report};
@@ -39,12 +38,17 @@ impl Parser {
     }
 
     fn function(&mut self, kind: &str) -> Option<Stmt> {
-        let name = self.consume(
-            TokenType::Identifier("".into()),
-            &format!("Expected {} name", kind),
-        )?.clone();
+        let name = self
+            .consume(
+                TokenType::Identifier("".into()),
+                &format!("Expected {} name", kind),
+            )?
+            .clone();
         let mut parameters = Vec::new();
-        self.consume(TokenType::LeftParen, "Expected '(' after function declaration");
+        self.consume(
+            TokenType::LeftParen,
+            "Expected '(' after function declaration",
+        );
         if !self.check(TokenType::RightParen) {
             while {
                 if parameters.len() >= 8 {
@@ -109,7 +113,7 @@ impl Parser {
 
     fn return_statement(&mut self) -> Option<Stmt> {
         let keyword = self.previous().clone();
-        let value =  if !self.check(TokenType::Semicolon) {
+        let value = if !self.check(TokenType::Semicolon) {
             Some(self.expression()?)
         } else {
             None
@@ -373,9 +377,9 @@ impl Parser {
                 self.consume(TokenType::RightParen, "Expected ')' after expression.");
                 Some(Expr::Grouping(Grouping::new(expr)))
             }
-            TokenType::Identifier(string) => Some(Expr::Variable(Variable {
-                name: self.previous().clone(),
-            })),
+            TokenType::Identifier(string) => {
+                Some(Expr::Variable(Variable::new(self.previous().clone())))
+            }
             c => {
                 println!("Token: {:?}", c);
                 panic!("lol")

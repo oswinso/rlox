@@ -15,7 +15,7 @@ pub enum Stmt {
 #[derive(Debug, Clone)]
 pub struct Return {
     pub keyword: Box<Token>,
-    pub value: Option<Box<Expr>>
+    pub value: Option<Box<Expr>>,
 }
 
 #[derive(Debug, Clone)]
@@ -60,8 +60,32 @@ pub trait Visitor<T> {
     fn visit_while(&mut self, while_stmt: &While) -> T;
 }
 
+pub trait MutableVisitor<T> {
+    fn visit_block(&mut self, block: &mut Block) -> T;
+    fn visit_expression(&mut self, expression: &mut Expr) -> T;
+    fn visit_function(&mut self, function: &mut FunctionDecl) -> T;
+    fn visit_if(&mut self, if_stmt: &mut If) -> T;
+    fn visit_print(&mut self, expression: &mut Expr) -> T;
+    fn visit_return(&mut self, ret: &mut Return) -> T;
+    fn visit_declaration(&mut self, declaration: &mut Declaration) -> T;
+    fn visit_while(&mut self, while_stmt: &mut While) -> T;
+}
+
 impl Stmt {
     pub fn accept<T, V: Visitor<T>>(&self, visitor: &mut V) -> T {
+        match self {
+            Stmt::Block(block) => visitor.visit_block(block),
+            Stmt::Expression(expr) => visitor.visit_expression(expr),
+            Stmt::Function(function) => visitor.visit_function(function),
+            Stmt::If(if_stmt) => visitor.visit_if(if_stmt),
+            Stmt::Print(expr) => visitor.visit_print(expr),
+            Stmt::Return(ret) => visitor.visit_return(ret),
+            Stmt::Declaration(declaration) => visitor.visit_declaration(declaration),
+            Stmt::While(while_stmt) => visitor.visit_while(while_stmt),
+        }
+    }
+
+    pub fn accept_mutable<T, V: MutableVisitor<T>>(&mut self, visitor: &mut V) -> T {
         match self {
             Stmt::Block(block) => visitor.visit_block(block),
             Stmt::Expression(expr) => visitor.visit_expression(expr),
@@ -114,7 +138,7 @@ impl Return {
     pub fn new(keyword: Token, value: Option<Expr>) -> Return {
         Return {
             keyword: Box::new(keyword),
-            value: value.map(|x|Box::new(x))
+            value: value.map(|x| Box::new(x)),
         }
     }
 }

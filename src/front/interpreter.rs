@@ -1,7 +1,7 @@
 use crate::front::expr::{
     self, Assign, Binary, Call, Expr, Grouping, Literal, Ternary, Unary, Value, Variable,
 };
-use crate::front::stmt::{self, Block, Declaration, If, Stmt, While, FunctionDecl, Return};
+use crate::front::stmt::{self, Block, Declaration, FunctionDecl, If, Return, Stmt, While};
 use crate::front::token::Token;
 use crate::front::token_type::TokenType;
 
@@ -9,10 +9,10 @@ use crate::front::errors::{ComposedError, IncorrectArgumentsError, RuntimeError,
 
 use crate::front::callables::{Callable, Clock, Function};
 use crate::front::environment::Environment;
+use crate::front::return_object::ReturnObject;
+use crate::front::statement_result::StatementResult;
 use crate::runtime_error;
 use std::rc::Rc;
-use crate::front::statement_result::StatementResult;
-use crate::front::return_object::ReturnObject;
 
 pub struct Interpreter {
     pub globals: Environment,
@@ -59,7 +59,11 @@ impl Interpreter {
         stmt.accept(self)
     }
 
-    pub fn execute_block(&mut self, statements: &Vec<Stmt>, mut environment: Option<Environment>) -> Option<StatementResult> {
+    pub fn execute_block(
+        &mut self,
+        statements: &Vec<Stmt>,
+        mut environment: Option<Environment>,
+    ) -> Option<StatementResult> {
         if let Some(ref mut env) = environment {
             self.environment.swap(env);
         }
@@ -225,12 +229,28 @@ impl Interpreter {
             None
         }
     }
+
+    fn lookup_variable(&self, variable: &Variable) -> RuntimeResult {
+        if let Some(depth) = variable.depth {
+            self.environment.get_at(&variable.name, depth)
+        } else {
+            panic!("Somehow resolver failed to resolve lookup for {}", variable.name.lexeme)
+        }
+    }
+
+    fn assign_variable(&self, variable: &Variable, value: &Value) {
+        if let Some(depth) = variable.depth {
+            self.environment.assign_at(&variable.name, value.clone(), depth);
+        } else {
+            panic!("Somehow resolver failed to resolve assign for {}", variable.name.lexeme)
+        }
+    }
 }
 
 impl expr::Visitor<RuntimeResult> for Interpreter {
     fn visit_assign(&mut self, assign: &Assign) -> Result<Value, Box<dyn RuntimeError>> {
         let value = self.evaluate(&assign.value)?;
-        self.environment.assign(&assign.name, value.clone());
+        self.assign_variable(&assign.variable, &value);
         Ok(value)
     }
 
@@ -306,7 +326,7 @@ impl expr::Visitor<RuntimeResult> for Interpreter {
     }
 
     fn visit_variable(&mut self, variable: &Variable) -> RuntimeResult {
-        self.environment.get(&variable.name)
+        self.lookup_variable(variable)
     }
 }
 
@@ -320,27 +340,33 @@ impl stmt::Visitor<Option<StatementResult>> for Interpreter {
 
     fn visit_expression(&mut self, expression: &Expr) -> Option<StatementResult> {
         match self.evaluate(expression) {
-            Ok(val) => match val {
-                Value::Literal(literal) => {
-                    match literal {
-                        Literal::Nil => (),
-                        _ => println!("{}", literal)
-                    };
-                    None
+            Ok(val) => {
+                if !self.environment.is_global() {
+                    return None;
                 }
-                Value::Callable(callable) => {
-                    println!("Callable");
-                    None
+                match val {
+                    Value::Literal(literal) => {
+                        match literal {
+                            Literal::Nil => (),
+                            _ => println!("{}", literal),
+                        };
+                        None
+                    }
+                    Value::Callable(callable) => {
+                        println!("Callable");
+                        None
+                    }
                 }
-            },
+            }
             Err(error) => Some(error.into()),
         }
     }
 
     fn visit_function(&mut self, function_decl: &FunctionDecl) -> Option<StatementResult> {
-        let function = Function::new(function_decl.clone());
+        let function = Function::new(function_decl.clone(), self.environment.clone());
         let callable = Value::Callable(Rc::new(Box::new(function)));
-        self.environment.define(function_decl.name.lexeme.clone(), Some(callable));
+        self.environment
+            .define(function_decl.name.lexeme.clone(), Some(callable));
         None
     }
 
@@ -349,13 +375,13 @@ impl stmt::Visitor<Option<StatementResult>> for Interpreter {
         match res {
             Ok(condition) => {
                 if self.is_truthy(&condition) {
-                    self.execute(&if_stmt.then_branch).map(|x|x.into())
+                    self.execute(&if_stmt.then_branch).map(|x| x.into())
                 } else {
                     if_stmt
                         .else_branch
                         .as_ref()
                         .and_then(|else_branch| self.execute(&else_branch))
-                        .map(|x|x.into())
+                        .map(|x| x.into())
                 }
             }
             Err(error) => Some(error.into()),
@@ -373,11 +399,16 @@ impl stmt::Visitor<Option<StatementResult>> for Interpreter {
     }
 
     fn visit_return(&mut self, ret: &Return) -> Option<StatementResult> {
-        let value = ret.value.as_ref().map_or(Ok(Value::Literal(Literal::Nil)), |expr|self.evaluate(&expr));
+        let value = ret
+            .value
+            .as_ref()
+            .map_or(Ok(Value::Literal(Literal::Nil)), |expr| {
+                self.evaluate(&expr)
+            });
 
         match value {
             Ok(value) => Some(ReturnObject::new(value).into()),
-            Err(error) => Some(error.into())
+            Err(error) => Some(error.into()),
         }
     }
 

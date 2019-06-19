@@ -1,20 +1,24 @@
 use crate::front::callables::Callable;
-use crate::front::expr::{Value, Literal};
-use crate::front::interpreter::Interpreter;
-use crate::front::stmt::FunctionDecl;
 use crate::front::errors::RuntimeError;
+use crate::front::expr::{Literal, Value};
+use crate::front::interpreter::Interpreter;
 use crate::front::statement_result::StatementResult;
+use crate::front::stmt::FunctionDecl;
 
+use crate::front::environment::Environment;
 use std::fmt;
-use core::borrow::BorrowMut;
 
 pub struct Function {
     declaration: FunctionDecl,
+    closure: Environment,
 }
 
 impl Function {
-    pub fn new(declaration: FunctionDecl) -> Function {
-        Function { declaration }
+    pub fn new(declaration: FunctionDecl, closure: Environment) -> Function {
+        Function {
+            declaration,
+            closure,
+        }
     }
 }
 
@@ -27,8 +31,12 @@ impl Callable for Function {
         self.declaration.params.len()
     }
 
-    fn call(&self, interpreter: &mut Interpreter, arguments: Vec<Value>) -> Result<Value, Box<dyn RuntimeError>> {
-        let mut environment = interpreter.globals.clone();
+    fn call(
+        &self,
+        interpreter: &mut Interpreter,
+        arguments: Vec<Value>,
+    ) -> Result<Value, Box<dyn RuntimeError>> {
+        let mut environment = self.closure.clone();
         environment.push();
         for (param, arg) in self.declaration.params.iter().zip(arguments.iter()) {
             environment.define(param.lexeme.clone(), Some(arg.clone()));
@@ -43,19 +51,15 @@ impl Callable for Function {
             Some(res) => match res {
                 StatementResult::Return(return_object) => Ok(return_object.value),
                 StatementResult::RuntimeError(error) => Err(error),
-                _ => panic!("Lmao got a break")
+                _ => panic!("Lmao got a break"),
             },
-            None => Ok(Value::Literal(Literal::Nil))
+            None => Ok(Value::Literal(Literal::Nil)),
         }
     }
 }
 
 impl fmt::Display for Function {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(
-            f,
-            "<fn {}>",
-            self.declaration.name
-        )
+        write!(f, "<fn {}>", self.declaration.name)
     }
 }

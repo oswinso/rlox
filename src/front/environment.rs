@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::front::errors::{RuntimeError, UndefinedVariableError};
+use crate::front::errors::{FatalError, RuntimeError, UndefinedVariableError};
 use crate::front::expr::{Literal, Value};
 use crate::front::token::Token;
 use crate::front::token_type::TokenType;
@@ -47,18 +47,18 @@ pub struct ScopedEnvironment {
 
 impl Environment {
     pub fn new() -> Environment {
-        let mut env = Environment {
-            head: None,
-        };
+        let mut env = Environment { head: None };
         env.push();
         env
     }
 
     pub fn empty_env() -> Environment {
-        let mut env = Environment {
-            head: None,
-        };
+        let env = Environment { head: None };
         env
+    }
+
+    pub fn is_global(&self) -> bool {
+        self.head.as_ref().unwrap().borrow().parent.is_none()
     }
 
     /// Swaps the head with other
@@ -72,32 +72,67 @@ impl Environment {
             Some(old_head) => {
                 new_node.borrow_mut().parent = Some(old_head);
                 self.head = Some(new_node)
-            },
-            None => self.head = Some(new_node)
+            }
+            None => self.head = Some(new_node),
         }
     }
 
     pub fn pop(&mut self) {
-        self.head.take().map(|old_head| {
-            match old_head.borrow_mut().parent.take() {
-                Some(new_head) => {
-                    self.head = Some(new_head)
-                },
-                None => panic!("Tried to remove global env")
-            }
-        });
+        self.head
+            .take()
+            .map(|old_head| match old_head.borrow_mut().parent.take() {
+                Some(new_head) => self.head = Some(new_head),
+                None => panic!("Tried to remove global env"),
+            });
     }
 
     pub fn define(&mut self, name: String, value: Option<Value>) {
-        self.head.as_mut().map(|env| env.borrow_mut().define(name, value));
+        self.head
+            .as_mut()
+            .map(|env| env.borrow_mut().define(name, value));
     }
 
     pub fn assign(&mut self, token: &Token, value: Value) -> Option<Box<dyn RuntimeError>> {
-        self.head.as_mut().unwrap().borrow_mut().assign(token, value)
+        self.head
+            .as_mut()
+            .unwrap()
+            .borrow_mut()
+            .assign(token, value)
     }
 
     pub fn get(&self, token: &Token) -> Result<Value, Box<dyn RuntimeError>> {
         self.head.as_ref().unwrap().borrow().get(token)
+    }
+
+    pub fn get_at(&self, token: &Token, depth: usize) -> Result<Value, Box<dyn RuntimeError>> {
+        self.ancestor(depth).map_or(
+            Err(FatalError::new(
+                token.clone(),
+                "Variable tried to resolve to environment that is deeper than Adele".into(),
+            )
+            .into()),
+            |scoped_env| scoped_env.borrow().get(token),
+        )
+    }
+
+    pub fn assign_at(&self, token: &Token, value: Value, depth: usize) -> Option<Box<dyn RuntimeError>> {
+        self.ancestor(depth).map_or(
+            Some(FatalError::new(
+                token.clone(),
+                "Variable tried to resolve to environment that is deeper than Adele".into(),
+            )
+                .into()),
+            |scoped_env| scoped_env.borrow_mut().assign(token, value),
+        )
+    }
+
+    pub fn ancestor(&self, distance: usize) -> Link {
+        let mut scoped_env  = self.head.as_ref()?.clone();
+        for _ in 0..distance {
+            let new_env = scoped_env.borrow().parent.clone()?;
+            scoped_env = new_env;
+        }
+        Some(scoped_env)
     }
 }
 

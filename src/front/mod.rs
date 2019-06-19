@@ -18,3 +18,5 @@ pub mod callables;
 
 pub mod return_object;
 pub mod statement_result;
+
+pub mod resolver;
