@@ -1,4 +1,4 @@
-use crate::error;
+use crate::{error, warn};
 use crate::front::expr::{
     self, Assign, Binary, Call, Expr, Grouping, Literal, Ternary, Unary, Variable,
 };
@@ -12,40 +12,59 @@ enum FunctionType {
     Function
 }
 
+struct VariableStatus {
+    declaration_token: Token,
+    defined: bool,
+    used: bool
+}
+
+impl VariableStatus {
+    pub fn new(declaration_token: Token) -> Self {
+        VariableStatus {
+            declaration_token,
+            defined: false,
+            used: false
+        }
+    }
+}
+
 pub struct Resolver {
-    scopes: Vec<HashMap<String, bool>>,
+    scopes: Vec<HashMap<String, VariableStatus>>,
     current_function: FunctionType,
 }
 
 impl Resolver {
     pub fn new() -> Resolver {
         Resolver {
-            scopes: vec![HashMap::new()],
-            current_function: FunctionType::None
+            scopes: Vec::new(),
+            current_function: FunctionType::None,
         }
     }
 
-    pub fn resolve(&mut self, statements: &mut Vec<Stmt>) {
-        self.resolve_stmts(statements)
+    pub fn resolve(&mut self, statements: & mut [Stmt]) {
+        self.begin_scope();
+        self.resolve_stmts(statements);
+        self.end_scope();
     }
 
-    fn resolve_stmt(&mut self, statement: &mut Stmt) {
+    fn resolve_stmt(&mut self, statement: & mut Stmt) {
         statement.accept_mutable(self);
     }
 
-    fn resolve_stmts(&mut self, statements: &mut Vec<Stmt>) {
-        statements
-            .iter_mut()
-            .for_each(|stmt| self.resolve_stmt(stmt));
+    fn resolve_stmts(&mut self, statements: & mut [Stmt]) {
+        for statement in statements {
+            self.resolve_stmt(statement);
+        }
     }
 
-    fn resolve_expr(&mut self, expr: &mut Expr) {
+    fn resolve_expr(&mut self, expr: & mut Expr) {
         expr.accept_mutable(self);
     }
 
-    fn resolve_local(&mut self, variable: &mut Variable) {
-        for (i, scope) in self.scopes.iter().rev().enumerate() {
+    fn resolve_local(&mut self, variable: & mut Variable) {
+        for (i, scope) in self.scopes.iter_mut().rev().enumerate() {
             if scope.contains_key(&variable.name.lexeme) {
+                scope.get_mut(&variable.name.lexeme).unwrap().used = true;
                 variable.depth = Some(i);
                 return;
             }
@@ -57,7 +76,7 @@ impl Resolver {
         );
     }
 
-    fn resolve_function(&mut self, function_decl: &mut FunctionDecl, mut function_type: FunctionType) {
+    fn resolve_function(&mut self, function_decl: & mut FunctionDecl, mut function_type: FunctionType) {
         std::mem::swap(&mut function_type, &mut self.current_function);
         self.begin_scope();
         for param in &function_decl.params {
@@ -74,7 +93,13 @@ impl Resolver {
     }
 
     fn end_scope(&mut self) {
-        self.scopes.pop();
+        if let Some(scope) = self.scopes.pop() {
+            for (_, entry) in scope.into_iter() {
+                if !entry.used {
+                    warn(entry.declaration_token.line, &format!("Variable {} is declared but never used.", entry.declaration_token.lexeme))
+                }
+            }
+        }
     }
 
     fn declare(&mut self, token: &Token) {
@@ -82,19 +107,19 @@ impl Resolver {
             if scope.contains_key(&token.lexeme) {
                 error(token.line, &format!("Variable with name {} is already declared in this scope.", token.lexeme));
             } else {
-                scope.insert(token.lexeme.clone(), false);
+                scope.insert(token.lexeme.clone(), VariableStatus::new(token.clone()));
             }
         }
     }
 
     fn define(&mut self, token: &Token) {
         if let Some(scope) = self.scopes.last_mut() {
-            scope.insert(token.lexeme.clone(), true);
+            scope.get_mut(&token.lexeme).unwrap().defined = true;
         }
     }
 }
 
-impl stmt::MutableVisitor<()> for Resolver {
+impl<'a> stmt::MutableVisitor<'a, ()> for Resolver {
     fn visit_block(&mut self, block: &mut Block) -> () {
         self.begin_scope();
         self.resolve_stmts(&mut block.statements);
@@ -149,7 +174,7 @@ impl stmt::MutableVisitor<()> for Resolver {
     }
 }
 
-impl expr::MutableVisitor<()> for Resolver {
+impl<'a> expr::MutableVisitor<'a, ()> for Resolver {
     fn visit_assign(&mut self, assign: &mut Assign) -> () {
         self.resolve_expr(&mut assign.value);
         self.resolve_local(&mut assign.variable);
@@ -191,8 +216,8 @@ impl expr::MutableVisitor<()> for Resolver {
 
     fn visit_variable(&mut self, variable: &mut Variable) -> () {
         if let Some(scope) = self.scopes.last() {
-            if let Some(defined) = scope.get(&variable.name.lexeme) {
-                if !defined {
+            if let Some(status) = scope.get(&variable.name.lexeme) {
+                if !status.defined {
                     error(
                         variable.name.line,
                         "Cannot read local variable in own initializer",

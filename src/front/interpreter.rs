@@ -247,7 +247,7 @@ impl Interpreter {
     }
 }
 
-impl expr::Visitor<RuntimeResult> for Interpreter {
+impl expr::Visitor<'_, RuntimeResult> for Interpreter {
     fn visit_assign(&mut self, assign: &Assign) -> Result<Value, Box<dyn RuntimeError>> {
         let value = self.evaluate(&assign.value)?;
         self.assign_variable(&assign.variable, &value);

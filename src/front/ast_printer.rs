@@ -27,7 +27,7 @@ impl AstPrinter {
     }
 }
 
-impl Visitor<String> for AstPrinter {
+impl Visitor<'_, String> for AstPrinter {
     fn visit_assign(&mut self, assign: &Assign) -> String {
         self.parenthesize(
             &format!("{} := ", assign.variable.name.lexeme),

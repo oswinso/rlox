@@ -109,8 +109,10 @@ fn run(source: &str, interpreter: &mut Interpreter) {
     //        }
     //    }
 
-    let mut resolver = Resolver::new();
-    resolver.resolve(&mut stmts);
+    {
+        let mut resolver = Resolver::new();
+        resolver.resolve(&mut stmts);
+    }
 
     if unsafe { HAD_ERROR } {
         return;
@@ -121,11 +123,15 @@ fn run(source: &str, interpreter: &mut Interpreter) {
 
 fn error(line: usize, message: &str) {
     report(line, "", message);
+    unsafe { HAD_ERROR = true };
+}
+
+fn warn(line: usize, message: &str) {
+    eprintln!("[line {}] Warning: {}", line, message);
 }
 
 fn report(line: usize, context: &str, message: &str) {
     eprintln!("[line {}] Error{}: {}", line, context, message);
-    unsafe { HAD_ERROR = true };
 }
 
 fn runtime_error<T: ?Sized>(rte: Box<T>)

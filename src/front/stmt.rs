@@ -60,19 +60,19 @@ pub trait Visitor<T> {
     fn visit_while(&mut self, while_stmt: &While) -> T;
 }
 
-pub trait MutableVisitor<T> {
-    fn visit_block(&mut self, block: &mut Block) -> T;
-    fn visit_expression(&mut self, expression: &mut Expr) -> T;
-    fn visit_function(&mut self, function: &mut FunctionDecl) -> T;
-    fn visit_if(&mut self, if_stmt: &mut If) -> T;
-    fn visit_print(&mut self, expression: &mut Expr) -> T;
-    fn visit_return(&mut self, ret: &mut Return) -> T;
-    fn visit_declaration(&mut self, declaration: &mut Declaration) -> T;
-    fn visit_while(&mut self, while_stmt: &mut While) -> T;
+pub trait MutableVisitor<'a, T> {
+    fn visit_block(&mut self, block: &'a mut Block) -> T;
+    fn visit_expression(&mut self, expression: &'a mut Expr) -> T;
+    fn visit_function(&mut self, function: &'a mut FunctionDecl) -> T;
+    fn visit_if(&mut self, if_stmt: &'a mut If) -> T;
+    fn visit_print(&mut self, expression: &'a mut Expr) -> T;
+    fn visit_return(&mut self, ret: &'a mut Return) -> T;
+    fn visit_declaration(&mut self, declaration: &'a mut Declaration) -> T;
+    fn visit_while(&mut self, while_stmt: &'a mut While) -> T;
 }
 
-impl Stmt {
-    pub fn accept<T, V: Visitor<T>>(&self, visitor: &mut V) -> T {
+impl<'a> Stmt {
+    pub fn accept<T, V: Visitor<T>>(&'a self, visitor: &mut V) -> T {
         match self {
             Stmt::Block(block) => visitor.visit_block(block),
             Stmt::Expression(expr) => visitor.visit_expression(expr),
@@ -85,7 +85,7 @@ impl Stmt {
         }
     }
 
-    pub fn accept_mutable<T, V: MutableVisitor<T>>(&mut self, visitor: &mut V) -> T {
+    pub fn accept_mutable<T, V: MutableVisitor<'a, T>>(&'a mut self, visitor: &mut V) -> T {
         match self {
             Stmt::Block(block) => visitor.visit_block(block),
             Stmt::Expression(expr) => visitor.visit_expression(expr),

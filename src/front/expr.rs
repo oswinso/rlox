@@ -80,32 +80,32 @@ impl Variable {
     }
 }
 
-pub trait Visitor<T> {
-    fn visit_assign(&mut self, assign: &Assign) -> T;
-    fn visit_binary(&mut self, binary: &Binary) -> T;
-    fn visit_call(&mut self, call: &Call) -> T;
-    fn visit_grouping(&mut self, grouping: &Grouping) -> T;
-    fn visit_literal(&mut self, literal: &Literal) -> T;
-    fn visit_logical(&mut self, logical: &Binary) -> T;
-    fn visit_unary(&mut self, unary: &Unary) -> T;
-    fn visit_ternary(&mut self, ternary: &Ternary) -> T;
-    fn visit_variable(&mut self, variable: &Variable) -> T;
+pub trait Visitor<'a, T> {
+    fn visit_assign(&mut self, assign: &'a Assign) -> T;
+    fn visit_binary(&mut self, binary: &'a Binary) -> T;
+    fn visit_call(&mut self, call: &'a Call) -> T;
+    fn visit_grouping(&mut self, grouping: &'a Grouping) -> T;
+    fn visit_literal(&mut self, literal: &'a Literal) -> T;
+    fn visit_logical(&mut self, logical: &'a Binary) -> T;
+    fn visit_unary(&mut self, unary: &'a Unary) -> T;
+    fn visit_ternary(&mut self, ternary: &'a Ternary) -> T;
+    fn visit_variable(&mut self, variable: &'a Variable) -> T;
 }
 
-pub trait MutableVisitor<T> {
-    fn visit_assign(&mut self, assign: &mut Assign) -> T;
-    fn visit_binary(&mut self, binary: &mut Binary) -> T;
-    fn visit_call(&mut self, call: &mut Call) -> T;
-    fn visit_grouping(&mut self, grouping: &mut Grouping) -> T;
-    fn visit_literal(&mut self, literal: &mut Literal) -> T;
-    fn visit_logical(&mut self, logical: &mut Binary) -> T;
-    fn visit_unary(&mut self, unary: &mut Unary) -> T;
-    fn visit_ternary(&mut self, ternary: &mut Ternary) -> T;
-    fn visit_variable(&mut self, variable: &mut Variable) -> T;
+pub trait MutableVisitor<'a, T> {
+    fn visit_assign(&mut self, assign: &'a mut Assign) -> T;
+    fn visit_binary(&mut self, binary: &'a mut Binary) -> T;
+    fn visit_call(&mut self, call: &'a mut Call) -> T;
+    fn visit_grouping(&mut self, grouping: &'a mut Grouping) -> T;
+    fn visit_literal(&mut self, literal: &'a mut Literal) -> T;
+    fn visit_logical(&mut self, logical: &'a mut Binary) -> T;
+    fn visit_unary(&mut self, unary: &'a mut Unary) -> T;
+    fn visit_ternary(&mut self, ternary: &'a mut Ternary) -> T;
+    fn visit_variable(&mut self, variable: &'a mut Variable) -> T;
 }
 
-impl Expr {
-    pub fn accept<T, V: Visitor<T>>(&self, visitor: &mut V) -> T {
+impl<'a> Expr {
+    pub fn accept<T, V: Visitor<'a, T>>(&'a self, visitor: &'a mut V) -> T {
         match self {
             Expr::Assign(assign) => visitor.visit_assign(assign),
             Expr::Binary(binary) => visitor.visit_binary(binary),
@@ -119,7 +119,7 @@ impl Expr {
         }
     }
 
-    pub fn accept_mutable<T, V: MutableVisitor<T>>(&mut self, visitor: &mut V) -> T {
+    pub fn accept_mutable<T, V: MutableVisitor<'a, T>>(&'a mut self, visitor: &mut V) -> T {
         match self {
             Expr::Assign(assign) => visitor.visit_assign(assign),
             Expr::Binary(binary) => visitor.visit_binary(binary),
