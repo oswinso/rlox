@@ -112,6 +112,10 @@ fn run(source: &str, interpreter: &mut Interpreter) {
     let mut resolver = Resolver::new();
     resolver.resolve(&mut stmts);
 
+    if unsafe { HAD_ERROR } {
+        return;
+    }
+
     interpreter.interpret(&stmts);
 }
 

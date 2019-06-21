@@ -6,14 +6,22 @@ use crate::front::stmt::{self, Block, Declaration, FunctionDecl, If, Return, Stm
 use crate::front::token::Token;
 use std::collections::HashMap;
 
+#[derive(PartialEq)]
+enum FunctionType {
+    None,
+    Function
+}
+
 pub struct Resolver {
     scopes: Vec<HashMap<String, bool>>,
+    current_function: FunctionType,
 }
 
 impl Resolver {
     pub fn new() -> Resolver {
         Resolver {
             scopes: vec![HashMap::new()],
+            current_function: FunctionType::None
         }
     }
 
@@ -49,7 +57,8 @@ impl Resolver {
         );
     }
 
-    fn resolve_function(&mut self, function_decl: &mut FunctionDecl) {
+    fn resolve_function(&mut self, function_decl: &mut FunctionDecl, mut function_type: FunctionType) {
+        std::mem::swap(&mut function_type, &mut self.current_function);
         self.begin_scope();
         for param in &function_decl.params {
             self.declare(&param);
@@ -57,6 +66,7 @@ impl Resolver {
         }
         self.resolve_stmts(&mut function_decl.body);
         self.end_scope();
+        std::mem::swap(&mut function_type, &mut self.current_function);
     }
 
     fn begin_scope(&mut self) {
@@ -69,7 +79,11 @@ impl Resolver {
 
     fn declare(&mut self, token: &Token) {
         if let Some(scope) = self.scopes.last_mut() {
-            scope.insert(token.lexeme.clone(), false);
+            if scope.contains_key(&token.lexeme) {
+                error(token.line, &format!("Variable with name {} is already declared in this scope.", token.lexeme));
+            } else {
+                scope.insert(token.lexeme.clone(), false);
+            }
         }
     }
 
@@ -95,7 +109,7 @@ impl stmt::MutableVisitor<()> for Resolver {
         self.declare(&function.name);
         self.define(&function.name);
 
-        self.resolve_function(function);
+        self.resolve_function(function, FunctionType::Function);
     }
 
     fn visit_if(&mut self, if_stmt: &mut If) -> () {
@@ -111,6 +125,11 @@ impl stmt::MutableVisitor<()> for Resolver {
     }
 
     fn visit_return(&mut self, ret: &mut Return) -> () {
+        if self.current_function == FunctionType::None {
+            error(ret.keyword.line, "Cannot return from top level code.");
+            return;
+        }
+
         if let Some(ref mut expr) = ret.value {
             self.resolve_expr(expr);
         }
