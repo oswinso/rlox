@@ -12,9 +12,9 @@ use crate::front::interpreter::Interpreter;
 use crate::front::parser::Parser;
 use crate::front::scanner::Scanner;
 
+use crate::front::resolver::Resolver;
 use crate::front::token::Token;
 use crate::front::token_type::TokenType;
-use crate::front::resolver::Resolver;
 
 static mut HAD_ERROR: bool = false;
 static mut HAD_RUNTIME_ERROR: bool = false;

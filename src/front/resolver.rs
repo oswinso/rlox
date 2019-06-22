@@ -1,21 +1,22 @@
-use crate::{error, warn};
-use crate::front::expr::{
-    self, Assign, Binary, Call, Expr, Grouping, Literal, Ternary, Unary, Variable,
+use crate::front::expr::{self, Assign, Binary, Call, Expr, Grouping, Literal, Ternary, Unary, Variable, Get, Set};
+use crate::front::stmt::{
+    self, Block, ClassDecl, Declaration, FunctionDecl, If, Return, Stmt, While,
 };
-use crate::front::stmt::{self, Block, Declaration, FunctionDecl, If, Return, Stmt, While, ClassDecl};
 use crate::front::token::Token;
+use crate::{error, warn};
 use std::collections::HashMap;
+use core::borrow::BorrowMut;
 
 #[derive(PartialEq)]
 enum FunctionType {
     None,
-    Function
+    Function,
 }
 
 struct VariableStatus {
     declaration_token: Token,
     defined: bool,
-    used: bool
+    used: bool,
 }
 
 impl VariableStatus {
@@ -23,7 +24,7 @@ impl VariableStatus {
         VariableStatus {
             declaration_token,
             defined: false,
-            used: false
+            used: false,
         }
     }
 }
@@ -41,27 +42,27 @@ impl Resolver {
         }
     }
 
-    pub fn resolve(&mut self, statements: & mut [Stmt]) {
+    pub fn resolve(&mut self, statements: &mut [Stmt]) {
         self.begin_scope();
         self.resolve_stmts(statements);
         self.end_scope();
     }
 
-    fn resolve_stmt(&mut self, statement: & mut Stmt) {
+    fn resolve_stmt(&mut self, statement: &mut Stmt) {
         statement.accept_mutable(self);
     }
 
-    fn resolve_stmts(&mut self, statements: & mut [Stmt]) {
+    fn resolve_stmts(&mut self, statements: &mut [Stmt]) {
         for statement in statements {
             self.resolve_stmt(statement);
         }
     }
 
-    fn resolve_expr(&mut self, expr: & mut Expr) {
+    fn resolve_expr(&mut self, expr: &mut Expr) {
         expr.accept_mutable(self);
     }
 
-    fn resolve_local(&mut self, variable: & mut Variable) {
+    fn resolve_local(&mut self, variable: &mut Variable) {
         for (i, scope) in self.scopes.iter_mut().rev().enumerate() {
             if scope.contains_key(&variable.name.lexeme) {
                 scope.get_mut(&variable.name.lexeme).unwrap().used = true;
@@ -76,7 +77,11 @@ impl Resolver {
         );
     }
 
-    fn resolve_function(&mut self, function_decl: & mut FunctionDecl, mut function_type: FunctionType) {
+    fn resolve_function(
+        &mut self,
+        function_decl: &mut FunctionDecl,
+        mut function_type: FunctionType,
+    ) {
         std::mem::swap(&mut function_type, &mut self.current_function);
         self.begin_scope();
         for param in &function_decl.params {
@@ -96,7 +101,13 @@ impl Resolver {
         if let Some(scope) = self.scopes.pop() {
             for (_, entry) in scope.into_iter() {
                 if !entry.used {
-                    warn(entry.declaration_token.line, &format!("Variable {} is declared but never used.", entry.declaration_token.lexeme))
+                    warn(
+                        entry.declaration_token.line,
+                        &format!(
+                            "Variable {} is declared but never used.",
+                            entry.declaration_token.lexeme
+                        ),
+                    )
                 }
             }
         }
@@ -105,7 +116,13 @@ impl Resolver {
     fn declare(&mut self, token: &Token) {
         if let Some(scope) = self.scopes.last_mut() {
             if scope.contains_key(&token.lexeme) {
-                error(token.line, &format!("Variable with name {} is already declared in this scope.", token.lexeme));
+                error(
+                    token.line,
+                    &format!(
+                        "Variable with name {} is already declared in this scope.",
+                        token.lexeme
+                    ),
+                );
             } else {
                 scope.insert(token.lexeme.clone(), VariableStatus::new(token.clone()));
             }
@@ -198,6 +215,10 @@ impl<'a> expr::MutableVisitor<'a, ()> for Resolver {
         }
     }
 
+    fn visit_get(&mut self, get: &mut Get) -> () {
+        self.resolve_expr(get.object.borrow_mut());
+    }
+
     fn visit_grouping(&mut self, grouping: &mut Grouping) -> () {
         self.resolve_expr(&mut grouping.expression);
     }
@@ -211,6 +232,11 @@ impl<'a> expr::MutableVisitor<'a, ()> for Resolver {
 
     fn visit_unary(&mut self, unary: &mut Unary) -> () {
         self.resolve_expr(&mut unary.right);
+    }
+
+    fn visit_set(&mut self, set: &'a mut Set) -> () {
+        self.resolve_expr(set.object.borrow_mut());
+        self.resolve_expr(set.value.borrow_mut());
     }
 
     fn visit_ternary(&mut self, ternary: &mut Ternary) -> () {

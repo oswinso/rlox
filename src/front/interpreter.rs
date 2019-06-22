@@ -1,19 +1,19 @@
-use crate::front::expr::{
-    self, Assign, Binary, Call, Expr, Grouping, Literal, Ternary, Unary, Value, Variable,
+use crate::front::expr::{self, Assign, Binary, Call, Expr, Grouping, Literal, Ternary, Unary, Value, Variable, Get, Set};
+use crate::front::stmt::{
+    self, Block, ClassDecl, Declaration, FunctionDecl, If, Return, Stmt, While,
 };
-use crate::front::stmt::{self, Block, Declaration, FunctionDecl, If, Return, Stmt, While, ClassDecl};
 use crate::front::token::Token;
 use crate::front::token_type::TokenType;
 
-use crate::front::errors::{ComposedError, IncorrectArgumentsError, RuntimeError, TypeError};
+use crate::front::errors::{IncorrectArgumentsError, RuntimeError, TypeError};
 
-use crate::front::callables::{Callable, Clock, Function, Class};
+use crate::front::callables::{Callable, Class, Clock, Function};
 use crate::front::environment::Environment;
 use crate::front::return_object::ReturnObject;
 use crate::front::statement_result::StatementResult;
 use crate::runtime_error;
-use std::rc::Rc;
 use core::borrow::Borrow;
+use std::rc::Rc;
 
 pub struct Interpreter {
     pub globals: Environment,
@@ -149,7 +149,7 @@ impl Interpreter {
         }
     }
 
-    fn handle_negate(&self, token: &Token, value: Value) -> RuntimeResult {
+    fn handle_negate(&self, _token: &Token, value: Value) -> RuntimeResult {
         Ok(Value::Literal(Literal::Bool(!self.is_truthy(&value))))
     }
 
@@ -235,26 +235,35 @@ impl Interpreter {
         if let Some(depth) = variable.depth {
             self.environment.get_at(&variable.name, depth)
         } else {
-            panic!("Somehow resolver failed to resolve lookup for {}", variable.name.lexeme)
+            panic!(
+                "Somehow resolver failed to resolve lookup for {}",
+                variable.name.lexeme
+            )
         }
     }
 
     fn assign_variable(&self, variable: &Variable, value: &Value) {
         if let Some(depth) = variable.depth {
-            self.environment.assign_at(&variable.name, value.clone(), depth);
+            self.environment
+                .assign_at(&variable.name, value.clone(), depth);
         } else {
-            panic!("Somehow resolver failed to resolve assign for {}", variable.name.lexeme)
+            panic!(
+                "Somehow resolver failed to resolve assign for {}",
+                variable.name.lexeme
+            )
         }
     }
 
-    fn try_call(&mut self, token: Token, callable: &Box<dyn Callable>, arguments: Vec<Value>) -> RuntimeResult {
+    fn try_call(
+        &mut self,
+        token: Token,
+        callable: &Box<dyn Callable>,
+        arguments: Vec<Value>,
+    ) -> RuntimeResult {
         if arguments.len() != callable.arity() {
-            return Err(IncorrectArgumentsError::new(
-                token,
-                callable.arity(),
-                arguments.len(),
-            )
-                .into());
+            return Err(
+                IncorrectArgumentsError::new(token, callable.arity(), arguments.len()).into(),
+            );
         }
         callable.call(self, arguments)
     }
@@ -285,7 +294,7 @@ impl expr::Visitor<'_, RuntimeResult> for Interpreter {
         match callee {
             Value::Callable(callable) => {
                 self.try_call(*call.paren.clone(), callable.borrow(), arguments)
-            },
+            }
             Value::Class(class) => {
                 let callable: Box<dyn Callable> = Box::new(class);
                 self.try_call(*call.paren.clone(), &callable, arguments)
@@ -293,6 +302,14 @@ impl expr::Visitor<'_, RuntimeResult> for Interpreter {
             _ => Err(
                 TypeError::new(*call.paren.clone(), "Can only call functions and classes!").into(),
             ),
+        }
+    }
+
+    fn visit_get(&mut self, get: &Get) -> Result<Value, Box<dyn RuntimeError>> {
+        if let Value::Instance(ref instance) = self.evaluate(&get.object)? {
+            instance.get(&get.name)
+        } else {
+            Err(TypeError::new(*get.name.clone(), "Only instances have properties").into())
         }
     }
 
@@ -325,6 +342,16 @@ impl expr::Visitor<'_, RuntimeResult> for Interpreter {
         self.handle_unary(&unary.operator, right)
     }
 
+    fn visit_set(&mut self, set: &Set) -> Result<Value, Box<dyn RuntimeError>> {
+        if let Value::Instance(ref mut instance) = self.evaluate(&set.object)? {
+            let value = self.evaluate(&set.value)?;
+            instance.set(&set.name, value.clone());
+            Ok(value)
+        } else {
+            Err(TypeError::new(*set.name.clone(), "Only instances have fields").into())
+        }
+    }
+
     fn visit_ternary(&mut self, ternary: &Ternary) -> RuntimeResult {
         let condition = self.evaluate(&ternary.condition)?;
         if self.is_truthy(&condition) {
@@ -348,9 +375,11 @@ impl stmt::Visitor<Option<StatementResult>> for Interpreter {
     }
 
     fn visit_class(&mut self, class_decl: &ClassDecl) -> Option<StatementResult> {
-        self.environment.define(class_decl.name.lexeme.clone(), None);
+        self.environment
+            .define(class_decl.name.lexeme.clone(), None);
         let class = Class::new(class_decl.name.lexeme.clone());
-        self.environment.assign(&class_decl.name, Value::Class(class));
+        self.environment
+            .assign(&class_decl.name, Value::Class(class));
         None
     }
 
@@ -369,7 +398,7 @@ impl stmt::Visitor<Option<StatementResult>> for Interpreter {
                         None
                     }
                     Value::Callable(callable) => {
-                        println!("Callable");
+                        println!("{}", callable);
                         None
                     }
                     Value::Class(class) => {

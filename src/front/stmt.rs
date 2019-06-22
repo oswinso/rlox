@@ -156,6 +156,9 @@ impl Return {
 
 impl ClassDecl {
     pub fn new(name: Token, methods: Vec<FunctionDecl>) -> ClassDecl {
-        ClassDecl { name: Box::new(name), methods }
+        ClassDecl {
+            name: Box::new(name),
+            methods,
+        }
     }
 }

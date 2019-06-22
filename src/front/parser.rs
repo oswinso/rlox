@@ -1,5 +1,5 @@
 use crate::front::expr::*;
-use crate::front::stmt::{Block, Declaration, FunctionDecl, If, Return, Stmt, While, ClassDecl};
+use crate::front::stmt::{Block, ClassDecl, Declaration, FunctionDecl, If, Return, Stmt, While};
 use crate::front::token::Token;
 use crate::front::token_type::TokenType;
 use crate::{error, report};
@@ -40,7 +40,9 @@ impl Parser {
     }
 
     fn class_declaration(&mut self) -> Option<Stmt> {
-        let name = self.consume(TokenType::Identifier("".into()), "Expected class name")?.clone();
+        let name = self
+            .consume(TokenType::Identifier("".into()), "Expected class name")?
+            .clone();
         self.consume(TokenType::LeftBrace, "Expected '{' before class body");
 
         let mut methods = Vec::new();
@@ -241,6 +243,8 @@ impl Parser {
 
             if let Expr::Variable(var) = expr {
                 return Some(Expr::Assign(Assign::new(var.name, value)));
+            } else if let Expr::Get(get) = expr {
+                return Some(Expr::Set(Set::new(*get.object, *get.name, value)))
             }
         }
         Some(expr)
@@ -353,6 +357,12 @@ impl Parser {
         loop {
             if self.match_tokens(vec![TokenType::LeftParen]) {
                 expr = self.finish_call(expr)?;
+            } else if self.match_tokens(vec![TokenType::Dot]) {
+                let name = self.consume(
+                    TokenType::Identifier("".into()),
+                    "Expected property name after '.'",
+                )?.clone();
+                expr = Expr::Get(Get::new(expr, name))
             } else {
                 break;
             }

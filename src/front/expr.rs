@@ -1,4 +1,4 @@
-use crate::front::callables::{Callable, Instance, Class};
+use crate::front::callables::{Callable, Class, Instance};
 use crate::front::token::Token;
 
 use std::fmt;
@@ -9,13 +9,28 @@ pub enum Expr {
     Assign(Assign),
     Binary(Binary),
     Call(Call),
+    Get(Get),
     Grouping(Grouping),
     Literal(Literal),
     Logical(Binary),
+    Set(Set),
     Unary(Unary),
     Ternary(Ternary),
     Variable(Variable),
 }
+#[derive(Debug, Clone)]
+pub struct Set {
+    pub object: Box<Expr>,
+    pub name: Box<Token>,
+    pub value: Box<Expr>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Get {
+    pub object: Box<Expr>,
+    pub name: Box<Token>,
+}
+
 #[derive(Debug, Clone)]
 pub struct Assign {
     pub variable: Box<Variable>,
@@ -61,7 +76,7 @@ pub enum Value {
     Literal(Literal),
     Callable(Rc<Box<dyn Callable>>),
     Class(Class),
-    Instance(Instance)
+    Instance(Instance),
 }
 
 #[derive(Debug, Clone)]
@@ -86,10 +101,12 @@ pub trait Visitor<'a, T> {
     fn visit_assign(&mut self, assign: &'a Assign) -> T;
     fn visit_binary(&mut self, binary: &'a Binary) -> T;
     fn visit_call(&mut self, call: &'a Call) -> T;
+    fn visit_get(&mut self, get: &'a Get) -> T;
     fn visit_grouping(&mut self, grouping: &'a Grouping) -> T;
     fn visit_literal(&mut self, literal: &'a Literal) -> T;
     fn visit_logical(&mut self, logical: &'a Binary) -> T;
     fn visit_unary(&mut self, unary: &'a Unary) -> T;
+    fn visit_set(&mut self, set: &'a Set) -> T;
     fn visit_ternary(&mut self, ternary: &'a Ternary) -> T;
     fn visit_variable(&mut self, variable: &'a Variable) -> T;
 }
@@ -98,10 +115,12 @@ pub trait MutableVisitor<'a, T> {
     fn visit_assign(&mut self, assign: &'a mut Assign) -> T;
     fn visit_binary(&mut self, binary: &'a mut Binary) -> T;
     fn visit_call(&mut self, call: &'a mut Call) -> T;
+    fn visit_get(&mut self, get: &'a mut Get) -> T;
     fn visit_grouping(&mut self, grouping: &'a mut Grouping) -> T;
     fn visit_literal(&mut self, literal: &'a mut Literal) -> T;
     fn visit_logical(&mut self, logical: &'a mut Binary) -> T;
     fn visit_unary(&mut self, unary: &'a mut Unary) -> T;
+    fn visit_set(&mut self, set: &'a mut Set) -> T;
     fn visit_ternary(&mut self, ternary: &'a mut Ternary) -> T;
     fn visit_variable(&mut self, variable: &'a mut Variable) -> T;
 }
@@ -112,10 +131,12 @@ impl<'a> Expr {
             Expr::Assign(assign) => visitor.visit_assign(assign),
             Expr::Binary(binary) => visitor.visit_binary(binary),
             Expr::Call(call) => visitor.visit_call(call),
+            Expr::Get(get) => visitor.visit_get(get),
             Expr::Grouping(grouping) => visitor.visit_grouping(grouping),
             Expr::Literal(literal) => visitor.visit_literal(literal),
             Expr::Logical(logical) => visitor.visit_logical(logical),
             Expr::Unary(unary) => visitor.visit_unary(unary),
+            Expr::Set(set) => visitor.visit_set(set),
             Expr::Ternary(ternary) => visitor.visit_ternary(ternary),
             Expr::Variable(variable) => visitor.visit_variable(variable),
         }
@@ -126,10 +147,12 @@ impl<'a> Expr {
             Expr::Assign(assign) => visitor.visit_assign(assign),
             Expr::Binary(binary) => visitor.visit_binary(binary),
             Expr::Call(call) => visitor.visit_call(call),
+            Expr::Get(get) => visitor.visit_get(get),
             Expr::Grouping(grouping) => visitor.visit_grouping(grouping),
             Expr::Literal(literal) => visitor.visit_literal(literal),
             Expr::Logical(logical) => visitor.visit_logical(logical),
             Expr::Unary(unary) => visitor.visit_unary(unary),
+            Expr::Set(set) => visitor.visit_set(set),
             Expr::Ternary(ternary) => visitor.visit_ternary(ternary),
             Expr::Variable(variable) => visitor.visit_variable(variable),
         }
@@ -192,6 +215,25 @@ impl Ternary {
     }
 }
 
+impl Get {
+    pub fn new(expr: Expr, name: Token) -> Get {
+        Get {
+            object: Box::new(expr),
+            name: Box::new(name),
+        }
+    }
+}
+
+impl Set {
+    pub fn new(expr: Expr, name: Token, value: Expr) -> Set {
+        Set {
+            object: Box::new(expr),
+            name: Box::new(name),
+            value: Box::new(value),
+        }
+    }
+}
+
 impl fmt::Display for Literal {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         match self {
@@ -209,7 +251,7 @@ impl fmt::Display for Value {
             Value::Literal(literal) => write!(f, "{}", literal),
             Value::Callable(c) => write!(f, "{}", c),
             Value::Class(class) => write!(f, "{}", class),
-            Value::Instance(instance) => write!(f, "{}", instance)
+            Value::Instance(instance) => write!(f, "{}", instance),
         }
     }
 }
@@ -235,11 +277,5 @@ impl From<bool> for Literal {
 impl From<Literal> for Value {
     fn from(literal: Literal) -> Self {
         Value::Literal(literal)
-    }
-}
-
-impl From<Literal> for Expr {
-    fn from(literal: Literal) -> Self {
-        Expr::Literal(literal)
     }
 }

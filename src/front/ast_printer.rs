@@ -52,6 +52,10 @@ impl Visitor<'_, String> for AstPrinter {
         self.parenthesize("call", terms)
     }
 
+    fn visit_get(&mut self, get: &Get) -> String {
+        unimplemented!()
+    }
+
     fn visit_grouping(&mut self, grouping: &Grouping) -> String {
         self.parenthesize("group", vec![&grouping.expression])
     }
@@ -71,6 +75,10 @@ impl Visitor<'_, String> for AstPrinter {
 
     fn visit_unary(&mut self, unary: &Unary) -> String {
         self.parenthesize(&unary.operator.lexeme, vec![&unary.right])
+    }
+
+    fn visit_set(&mut self, set: &Set) -> String {
+        unimplemented!()
     }
 
     fn visit_ternary(&mut self, ternary: &Ternary) -> String {

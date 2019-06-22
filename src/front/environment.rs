@@ -115,19 +115,26 @@ impl Environment {
         )
     }
 
-    pub fn assign_at(&self, token: &Token, value: Value, depth: usize) -> Option<Box<dyn RuntimeError>> {
+    pub fn assign_at(
+        &self,
+        token: &Token,
+        value: Value,
+        depth: usize,
+    ) -> Option<Box<dyn RuntimeError>> {
         self.ancestor(depth).map_or(
-            Some(FatalError::new(
-                token.clone(),
-                "Variable tried to resolve to environment that is deeper than Adele".into(),
-            )
-                .into()),
+            Some(
+                FatalError::new(
+                    token.clone(),
+                    "Variable tried to resolve to environment that is deeper than Adele".into(),
+                )
+                .into(),
+            ),
             |scoped_env| scoped_env.borrow_mut().assign(token, value),
         )
     }
 
     pub fn ancestor(&self, distance: usize) -> Link {
-        let mut scoped_env  = self.head.as_ref()?.clone();
+        let mut scoped_env = self.head.as_ref()?.clone();
         for _ in 0..distance {
             let new_env = scoped_env.borrow().parent.clone()?;
             scoped_env = new_env;
