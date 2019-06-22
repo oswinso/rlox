@@ -10,7 +10,10 @@ pub struct UndefinedPropertyError {
 
 impl UndefinedPropertyError {
     pub fn new(instance_class: String, property: Token) -> Self {
-        UndefinedPropertyError { instance_class, property }
+        UndefinedPropertyError {
+            instance_class,
+            property,
+        }
     }
 }
 

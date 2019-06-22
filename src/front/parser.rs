@@ -244,7 +244,7 @@ impl Parser {
             if let Expr::Variable(var) = expr {
                 return Some(Expr::Assign(Assign::new(var.name, value)));
             } else if let Expr::Get(get) = expr {
-                return Some(Expr::Set(Set::new(*get.object, *get.name, value)))
+                return Some(Expr::Set(Set::new(*get.object, *get.name, value)));
             }
         }
         Some(expr)
@@ -358,10 +358,12 @@ impl Parser {
             if self.match_tokens(vec![TokenType::LeftParen]) {
                 expr = self.finish_call(expr)?;
             } else if self.match_tokens(vec![TokenType::Dot]) {
-                let name = self.consume(
-                    TokenType::Identifier("".into()),
-                    "Expected property name after '.'",
-                )?.clone();
+                let name = self
+                    .consume(
+                        TokenType::Identifier("".into()),
+                        "Expected property name after '.'",
+                    )?
+                    .clone();
                 expr = Expr::Get(Get::new(expr, name))
             } else {
                 break;

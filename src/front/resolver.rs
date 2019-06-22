@@ -1,11 +1,13 @@
-use crate::front::expr::{self, Assign, Binary, Call, Expr, Grouping, Literal, Ternary, Unary, Variable, Get, Set};
+use crate::front::expr::{
+    self, Assign, Binary, Call, Expr, Get, Grouping, Literal, Set, Ternary, Unary, Variable,
+};
 use crate::front::stmt::{
     self, Block, ClassDecl, Declaration, FunctionDecl, If, Return, Stmt, While,
 };
 use crate::front::token::Token;
 use crate::{error, warn};
-use std::collections::HashMap;
 use core::borrow::BorrowMut;
+use std::collections::HashMap;
 
 #[derive(PartialEq)]
 enum FunctionType {

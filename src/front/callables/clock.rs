@@ -24,11 +24,11 @@ impl Callable for Clock {
     fn call(
         &self,
         interpreter: &mut Interpreter,
-        arguments: Vec<Value>,
-    ) -> Result<Value, Box<RuntimeError>> {
+        arguments: Vec<Rc<Value>>,
+    ) -> Result<Rc<Value>, Box<dyn RuntimeError>> {
         let now = SystemTime::now();
         let since_epoch = now.duration_since(UNIX_EPOCH).unwrap();
-        Ok(Value::Literal(since_epoch.as_secs_f64().into()))
+        Ok(Rc::new(Value::Literal(since_epoch.as_secs_f64().into())))
     }
 }
 

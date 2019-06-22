@@ -3,6 +3,7 @@ use crate::front::errors::RuntimeError;
 use crate::front::expr::Value;
 use crate::front::interpreter::Interpreter;
 use std::fmt;
+use std::rc::Rc;
 
 #[derive(Clone, PartialEq)]
 pub struct Class {
@@ -27,9 +28,9 @@ impl Callable for Class {
     fn call(
         &self,
         _interpreter: &mut Interpreter,
-        _arguments: Vec<Value>,
-    ) -> Result<Value, Box<dyn RuntimeError>> {
-        Ok(Value::Instance(Instance::new(self.clone())))
+        _arguments: Vec<Rc<Value>>,
+    ) -> Result<Rc<Value>, Box<dyn RuntimeError>> {
+        Ok(Rc::new(Value::Instance(Instance::new(self.clone()))))
     }
 }
 

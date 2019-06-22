@@ -16,18 +16,18 @@ type Link = Option<Rc<RefCell<ScopedEnvironment>>>;
 
 pub struct Variable {
     pub defined: bool,
-    pub value: Value,
+    pub value: Rc<Value>,
 }
 
 impl Variable {
     pub fn new() -> Self {
         Variable {
             defined: false,
-            value: Value::Literal(Literal::Nil),
+            value: Rc::new(Value::Literal(Literal::Nil)),
         }
     }
 
-    pub fn initialize(value: Value) -> Self {
+    pub fn initialize(value: Rc<Value>) -> Self {
         Variable {
             defined: true,
             value,
@@ -36,7 +36,7 @@ impl Variable {
 
     pub fn assign(&mut self, value: Value) {
         self.defined = true;
-        self.value = value;
+        self.value = Rc::new(value);
     }
 }
 
@@ -86,7 +86,7 @@ impl Environment {
             });
     }
 
-    pub fn define(&mut self, name: String, value: Option<Value>) {
+    pub fn define(&mut self, name: String, value: Option<Rc<Value>>) {
         self.head
             .as_mut()
             .map(|env| env.borrow_mut().define(name, value));
@@ -100,11 +100,11 @@ impl Environment {
             .assign(token, value)
     }
 
-    pub fn get(&self, token: &Token) -> Result<Value, Box<dyn RuntimeError>> {
+    pub fn get(&self, token: &Token) -> Result<Rc<Value>, Box<dyn RuntimeError>> {
         self.head.as_ref().unwrap().borrow().get(token)
     }
 
-    pub fn get_at(&self, token: &Token, depth: usize) -> Result<Value, Box<dyn RuntimeError>> {
+    pub fn get_at(&self, token: &Token, depth: usize) -> Result<Rc<Value>, Box<dyn RuntimeError>> {
         self.ancestor(depth).map_or(
             Err(FatalError::new(
                 token.clone(),
@@ -151,7 +151,7 @@ impl ScopedEnvironment {
         }
     }
 
-    pub fn define(&mut self, name: String, value: Option<Value>) {
+    pub fn define(&mut self, name: String, value: Option<Rc<Value>>) {
         match value {
             Some(value) => self.values.insert(name, Variable::initialize(value)),
             None => self.values.insert(name, Variable::new()),
@@ -169,7 +169,7 @@ impl ScopedEnvironment {
         }
     }
 
-    pub fn get(&self, token: &Token) -> Result<Value, Box<dyn RuntimeError>> {
+    pub fn get(&self, token: &Token) -> Result<Rc<Value>, Box<dyn RuntimeError>> {
         if let TokenType::Identifier(name) = &token.token_type {
             if let Some(variable) = self.values.get(name) {
                 if variable.defined {

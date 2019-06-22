@@ -1,4 +1,6 @@
-use crate::front::expr::{self, Assign, Binary, Call, Expr, Grouping, Literal, Ternary, Unary, Value, Variable, Get, Set};
+use crate::front::expr::{
+    self, Assign, Binary, Call, Expr, Get, Grouping, Literal, Set, Ternary, Unary, Value, Variable,
+};
 use crate::front::stmt::{
     self, Block, ClassDecl, Declaration, FunctionDecl, If, Return, Stmt, While,
 };
@@ -12,7 +14,7 @@ use crate::front::environment::Environment;
 use crate::front::return_object::ReturnObject;
 use crate::front::statement_result::StatementResult;
 use crate::runtime_error;
-use core::borrow::Borrow;
+use core::borrow::{Borrow, BorrowMut};
 use std::rc::Rc;
 
 pub struct Interpreter {
@@ -20,7 +22,7 @@ pub struct Interpreter {
     pub environment: Environment,
 }
 
-type RuntimeResult = Result<Value, Box<dyn RuntimeError>>;
+type RuntimeResult = Result<Rc<Value>, Box<dyn RuntimeError>>;
 
 impl Interpreter {
     pub fn new() -> Interpreter {
@@ -38,7 +40,7 @@ impl Interpreter {
 
         for callable in funcs {
             self.environment
-                .define(callable.name().to_owned(), Some(Value::Callable(callable)))
+                .define(callable.name().to_owned(), Some(Rc::new(Value::Callable(callable))))
         }
     }
 
@@ -100,7 +102,7 @@ impl Interpreter {
                 if let (Some(left), Some(right)) =
                     (self.require_number(left), self.require_number(right))
                 {
-                    Ok(Value::Literal((left > right).into()))
+                    Ok(Rc::new(Value::Literal((left > right).into())))
                 } else {
                     Err(
                         TypeError::new(token.clone(), "Greater requires two number operands")
@@ -112,7 +114,7 @@ impl Interpreter {
                 if let (Some(left), Some(right)) =
                     (self.require_number(left), self.require_number(right))
                 {
-                    Ok(Value::Literal((left >= right).into()))
+                    Ok(Rc::new(Value::Literal((left >= right).into())))
                 } else {
                     Err(TypeError::new(token.clone(), "GEQ requires two number operands").into())
                 }
@@ -121,7 +123,7 @@ impl Interpreter {
                 if let (Some(left), Some(right)) =
                     (self.require_number(left), self.require_number(right))
                 {
-                    Ok(Value::Literal((left < right).into()))
+                    Ok(Rc::new(Value::Literal((left < right).into())))
                 } else {
                     Err(TypeError::new(token.clone(), "LE requires two number operands").into())
                 }
@@ -130,27 +132,33 @@ impl Interpreter {
                 if let (Some(left), Some(right)) =
                     (self.require_number(left), self.require_number(right))
                 {
-                    Ok(Value::Literal((left <= right).into()))
+                    Ok(Rc::new(Value::Literal((left <= right).into())))
                 } else {
                     Err(TypeError::new(token.clone(), "LEQ requires two number operands").into())
                 }
             }
-            TokenType::EqualEqual => Ok(Value::Literal((self.is_equal(left, right)).into())),
-            TokenType::BangEqual => Ok(Value::Literal((!self.is_equal(left, right)).into())),
+            TokenType::EqualEqual => {
+                Ok(Rc::new(Value::Literal((self.is_equal(left, right)).into())))
+            }
+            TokenType::BangEqual => Ok(Rc::new(Value::Literal(
+                (!self.is_equal(left, right)).into(),
+            ))),
             _ => Err(TypeError::new(token.clone(), "Wrong token for binary expression").into()),
         }
     }
 
     fn handle_minus(&self, token: &Token, value: Value) -> RuntimeResult {
         if let Some(num) = self.require_number(value) {
-            Ok(Value::Literal((-num).into()))
+            Ok(Rc::new(Value::Literal((-num).into())))
         } else {
             Err(TypeError::new(token.clone(), "Minus unary only defined on numbers.").into())
         }
     }
 
     fn handle_negate(&self, _token: &Token, value: Value) -> RuntimeResult {
-        Ok(Value::Literal(Literal::Bool(!self.is_truthy(&value))))
+        Ok(Rc::new(Value::Literal(Literal::Bool(
+            !self.is_truthy(&value),
+        ))))
     }
 
     fn is_truthy(&self, value: &Value) -> bool {
@@ -177,7 +185,7 @@ impl Interpreter {
 
     fn handle_subtract(&self, token: &Token, left: Value, right: Value) -> RuntimeResult {
         if let (Some(left), Some(right)) = (self.require_number(left), self.require_number(right)) {
-            Ok(Value::Literal((left - right).into()))
+            Ok(Rc::new(Value::Literal((left - right).into())))
         } else {
             Err(TypeError::new(token.clone(), "Subtract requires two number operands").into())
         }
@@ -188,12 +196,12 @@ impl Interpreter {
             self.require_number(left.clone()),
             self.require_number(right.clone()),
         ) {
-            Ok(Value::Literal((left + right).into()))
+            Ok(Rc::new(Value::Literal((left + right).into())))
         } else if let (Some(left), Some(right)) = (
             self.require_string(left.clone()),
             self.require_string(right.clone()),
         ) {
-            Ok(Value::Literal((left + &right).into()))
+            Ok(Rc::new(Value::Literal((left + &right).into())))
         } else {
             Err(TypeError::new(token.clone(), "Two numbers or two strings required.").into())
         }
@@ -201,7 +209,7 @@ impl Interpreter {
 
     fn handle_divide(&self, token: &Token, left: Value, right: Value) -> RuntimeResult {
         if let (Some(left), Some(right)) = (self.require_number(left), self.require_number(right)) {
-            Ok(Value::Literal(Literal::Number(left / right)))
+            Ok(Rc::new(Value::Literal(Literal::Number(left / right))))
         } else {
             Err(TypeError::new(token.clone(), "Divide requires two number operands").into())
         }
@@ -209,7 +217,7 @@ impl Interpreter {
 
     fn handle_multiply(&self, token: &Token, left: Value, right: Value) -> RuntimeResult {
         if let (Some(left), Some(right)) = (self.require_number(left), self.require_number(right)) {
-            Ok(Value::Literal(Literal::Number(left * right)))
+            Ok(Rc::new(Value::Literal(Literal::Number(left * right))))
         } else {
             Err(TypeError::new(token.clone(), "Multiplication requires two number operands").into())
         }
@@ -258,7 +266,7 @@ impl Interpreter {
         &mut self,
         token: Token,
         callable: &Box<dyn Callable>,
-        arguments: Vec<Value>,
+        arguments: Vec<Rc<Value>>,
     ) -> RuntimeResult {
         if arguments.len() != callable.arity() {
             return Err(
@@ -270,7 +278,7 @@ impl Interpreter {
 }
 
 impl expr::Visitor<'_, RuntimeResult> for Interpreter {
-    fn visit_assign(&mut self, assign: &Assign) -> Result<Value, Box<dyn RuntimeError>> {
+    fn visit_assign(&mut self, assign: &Assign) -> RuntimeResult {
         let value = self.evaluate(&assign.value)?;
         self.assign_variable(&assign.variable, &value);
         Ok(value)
@@ -279,7 +287,11 @@ impl expr::Visitor<'_, RuntimeResult> for Interpreter {
     fn visit_binary(&mut self, binary: &Binary) -> RuntimeResult {
         let left = self.evaluate(&binary.left)?;
         let right = self.evaluate(&binary.right)?;
-        self.handle_binary(&binary.operator, left, right)
+        self.handle_binary(
+            &binary.operator,
+            left.as_ref().clone(),
+            right.as_ref().clone(),
+        )
     }
 
     fn visit_call(&mut self, call: &Call) -> RuntimeResult {
@@ -291,12 +303,12 @@ impl expr::Visitor<'_, RuntimeResult> for Interpreter {
             arguments.push(arg);
         }
 
-        match callee {
+        match callee.borrow() {
             Value::Callable(callable) => {
                 self.try_call(*call.paren.clone(), callable.borrow(), arguments)
             }
             Value::Class(class) => {
-                let callable: Box<dyn Callable> = Box::new(class);
+                let callable: Box<dyn Callable> = Box::new(class.clone());
                 self.try_call(*call.paren.clone(), &callable, arguments)
             }
             _ => Err(
@@ -305,9 +317,9 @@ impl expr::Visitor<'_, RuntimeResult> for Interpreter {
         }
     }
 
-    fn visit_get(&mut self, get: &Get) -> Result<Value, Box<dyn RuntimeError>> {
-        if let Value::Instance(ref instance) = self.evaluate(&get.object)? {
-            instance.get(&get.name)
+    fn visit_get(&mut self, get: &Get) -> RuntimeResult {
+        if let Value::Instance(ref instance) = self.evaluate(&get.object)?.borrow() {
+            Ok(Rc::new(instance.get(get.name.borrow())?))
         } else {
             Err(TypeError::new(*get.name.clone(), "Only instances have properties").into())
         }
@@ -318,7 +330,7 @@ impl expr::Visitor<'_, RuntimeResult> for Interpreter {
     }
 
     fn visit_literal(&mut self, literal: &Literal) -> RuntimeResult {
-        Ok(Value::Literal(literal.clone()))
+        Ok(Rc::new(Value::Literal(literal.clone())))
     }
 
     fn visit_logical(&mut self, logical: &Binary) -> RuntimeResult {
@@ -339,13 +351,16 @@ impl expr::Visitor<'_, RuntimeResult> for Interpreter {
 
     fn visit_unary(&mut self, unary: &Unary) -> RuntimeResult {
         let right = self.evaluate(&unary.right)?;
-        self.handle_unary(&unary.operator, right)
+        let x = &*right.clone();
+        self.handle_unary(&unary.operator, x.clone())
     }
 
-    fn visit_set(&mut self, set: &Set) -> Result<Value, Box<dyn RuntimeError>> {
-        if let Value::Instance(ref mut instance) = self.evaluate(&set.object)? {
+    fn visit_set(&mut self, set: &Set) -> RuntimeResult{
+        let x = self.evaluate(&set.object)?;
+        if let Value::Instance(ref instance) = x.borrow() {
             let value = self.evaluate(&set.value)?;
-            instance.set(&set.name, value.clone());
+            let y = &*value.clone();
+            instance.set(&set.name, y.clone());
             Ok(value)
         } else {
             Err(TypeError::new(*set.name.clone(), "Only instances have fields").into())
@@ -389,7 +404,7 @@ impl stmt::Visitor<Option<StatementResult>> for Interpreter {
                 if !self.environment.is_global() {
                     return None;
                 }
-                match val {
+                match val.borrow() {
                     Value::Literal(literal) => {
                         match literal {
                             Literal::Nil => (),
@@ -397,18 +412,7 @@ impl stmt::Visitor<Option<StatementResult>> for Interpreter {
                         };
                         None
                     }
-                    Value::Callable(callable) => {
-                        println!("{}", callable);
-                        None
-                    }
-                    Value::Class(class) => {
-                        println!("{}", class);
-                        None
-                    }
-                    Value::Instance(instance) => {
-                        println!("{}", instance);
-                        None
-                    }
+                    _ => None
                 }
             }
             Err(error) => Some(error.into()),
@@ -419,7 +423,7 @@ impl stmt::Visitor<Option<StatementResult>> for Interpreter {
         let function = Function::new(function_decl.clone(), self.environment.clone());
         let callable = Value::Callable(Rc::new(Box::new(function)));
         self.environment
-            .define(function_decl.name.lexeme.clone(), Some(callable));
+            .define(function_decl.name.lexeme.clone(), Some(Rc::new(callable)));
         None
     }
 
@@ -455,12 +459,15 @@ impl stmt::Visitor<Option<StatementResult>> for Interpreter {
         let value = ret
             .value
             .as_ref()
-            .map_or(Ok(Value::Literal(Literal::Nil)), |expr| {
+            .map_or(Ok(Rc::new(Value::Literal(Literal::Nil))), |expr| {
                 self.evaluate(&expr)
             });
 
         match value {
-            Ok(value) => Some(ReturnObject::new(value).into()),
+            Ok(value) => {
+                let x = &*value.clone();
+                Some(ReturnObject::new(x.clone()).into())
+            },
             Err(error) => Some(error.into()),
         }
     }
