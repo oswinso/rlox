@@ -1,5 +1,5 @@
 use crate::front::expr::*;
-use crate::front::stmt::{Block, Declaration, FunctionDecl, If, Return, Stmt, While};
+use crate::front::stmt::{Block, Declaration, FunctionDecl, If, Return, Stmt, While, ClassDecl};
 use crate::front::token::Token;
 use crate::front::token_type::TokenType;
 use crate::{error, report};
@@ -28,6 +28,8 @@ impl Parser {
             self.variable_declaration()
         } else if self.match_tokens(vec![TokenType::Fun]) {
             self.function("function")
+        } else if self.match_tokens(vec![TokenType::Class]) {
+            self.class_declaration()
         } else {
             self.statement()
         };
@@ -35,6 +37,21 @@ impl Parser {
             self.synchronize();
         }
         res
+    }
+
+    fn class_declaration(&mut self) -> Option<Stmt> {
+        let name = self.consume(TokenType::Identifier("".into()), "Expected class name")?.clone();
+        self.consume(TokenType::LeftBrace, "Expected '{' before class body");
+
+        let mut methods = Vec::new();
+        while !self.check(TokenType::RightBrace) && !self.is_at_end() {
+            if let Stmt::Function(function_decl) = self.function("method")? {
+                methods.push(function_decl);
+            }
+        }
+
+        self.consume(TokenType::RightBrace, "Expected '}' after class body");
+        Some(Stmt::Class(ClassDecl::new(name, methods)))
     }
 
     fn function(&mut self, kind: &str) -> Option<Stmt> {

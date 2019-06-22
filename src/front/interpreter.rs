@@ -1,18 +1,19 @@
 use crate::front::expr::{
     self, Assign, Binary, Call, Expr, Grouping, Literal, Ternary, Unary, Value, Variable,
 };
-use crate::front::stmt::{self, Block, Declaration, FunctionDecl, If, Return, Stmt, While};
+use crate::front::stmt::{self, Block, Declaration, FunctionDecl, If, Return, Stmt, While, ClassDecl};
 use crate::front::token::Token;
 use crate::front::token_type::TokenType;
 
 use crate::front::errors::{ComposedError, IncorrectArgumentsError, RuntimeError, TypeError};
 
-use crate::front::callables::{Callable, Clock, Function};
+use crate::front::callables::{Callable, Clock, Function, Class};
 use crate::front::environment::Environment;
 use crate::front::return_object::ReturnObject;
 use crate::front::statement_result::StatementResult;
 use crate::runtime_error;
 use std::rc::Rc;
+use core::borrow::Borrow;
 
 pub struct Interpreter {
     pub globals: Environment,
@@ -245,6 +246,18 @@ impl Interpreter {
             panic!("Somehow resolver failed to resolve assign for {}", variable.name.lexeme)
         }
     }
+
+    fn try_call(&mut self, token: Token, callable: &Box<dyn Callable>, arguments: Vec<Value>) -> RuntimeResult {
+        if arguments.len() != callable.arity() {
+            return Err(IncorrectArgumentsError::new(
+                token,
+                callable.arity(),
+                arguments.len(),
+            )
+                .into());
+        }
+        callable.call(self, arguments)
+    }
 }
 
 impl expr::Visitor<'_, RuntimeResult> for Interpreter {
@@ -271,15 +284,11 @@ impl expr::Visitor<'_, RuntimeResult> for Interpreter {
 
         match callee {
             Value::Callable(callable) => {
-                if arguments.len() != callable.arity() {
-                    return Err(IncorrectArgumentsError::new(
-                        *call.paren.clone(),
-                        callable.arity(),
-                        arguments.len(),
-                    )
-                    .into());
-                }
-                callable.call(self, arguments)
+                self.try_call(*call.paren.clone(), callable.borrow(), arguments)
+            },
+            Value::Class(class) => {
+                let callable: Box<dyn Callable> = Box::new(class);
+                self.try_call(*call.paren.clone(), &callable, arguments)
             }
             _ => Err(
                 TypeError::new(*call.paren.clone(), "Can only call functions and classes!").into(),
@@ -338,6 +347,13 @@ impl stmt::Visitor<Option<StatementResult>> for Interpreter {
         res.map(StatementResult::from)
     }
 
+    fn visit_class(&mut self, class_decl: &ClassDecl) -> Option<StatementResult> {
+        self.environment.define(class_decl.name.lexeme.clone(), None);
+        let class = Class::new(class_decl.name.lexeme.clone());
+        self.environment.assign(&class_decl.name, Value::Class(class));
+        None
+    }
+
     fn visit_expression(&mut self, expression: &Expr) -> Option<StatementResult> {
         match self.evaluate(expression) {
             Ok(val) => {
@@ -354,6 +370,14 @@ impl stmt::Visitor<Option<StatementResult>> for Interpreter {
                     }
                     Value::Callable(callable) => {
                         println!("Callable");
+                        None
+                    }
+                    Value::Class(class) => {
+                        println!("{}", class);
+                        None
+                    }
+                    Value::Instance(instance) => {
+                        println!("{}", instance);
                         None
                     }
                 }

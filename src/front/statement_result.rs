@@ -1,8 +1,6 @@
 use crate::front::errors::{ComposedError, RuntimeError};
 use crate::front::return_object::ReturnObject;
 
-use std::fmt;
-
 #[derive(Debug)]
 pub enum StatementResult {
     RuntimeError(Box<dyn RuntimeError>),
@@ -11,7 +9,7 @@ pub enum StatementResult {
 }
 
 impl From<Box<dyn RuntimeError>> for StatementResult {
-    fn from(error: Box<RuntimeError>) -> Self {
+    fn from(error: Box<dyn RuntimeError>) -> Self {
         StatementResult::RuntimeError(error)
     }
 }

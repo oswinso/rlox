@@ -1,4 +1,4 @@
-use crate::front::callables::Callable;
+use crate::front::callables::{Callable, Instance, Class};
 use crate::front::token::Token;
 
 use std::fmt;
@@ -60,6 +60,8 @@ pub enum Literal {
 pub enum Value {
     Literal(Literal),
     Callable(Rc<Box<dyn Callable>>),
+    Class(Class),
+    Instance(Instance)
 }
 
 #[derive(Debug, Clone)]
@@ -206,6 +208,8 @@ impl fmt::Display for Value {
         match self {
             Value::Literal(literal) => write!(f, "{}", literal),
             Value::Callable(c) => write!(f, "{}", c),
+            Value::Class(class) => write!(f, "{}", class),
+            Value::Instance(instance) => write!(f, "{}", instance)
         }
     }
 }

@@ -4,6 +4,7 @@ use crate::front::token::Token;
 #[derive(Debug, Clone)]
 pub enum Stmt {
     Block(Block),
+    Class(ClassDecl),
     Expression(Expr),
     Function(FunctionDecl),
     If(If),
@@ -12,6 +13,12 @@ pub enum Stmt {
     While(While),
     Declaration(Declaration),
 }
+#[derive(Debug, Clone)]
+pub struct ClassDecl {
+    pub name: Box<Token>,
+    pub methods: Vec<FunctionDecl>,
+}
+
 #[derive(Debug, Clone)]
 pub struct Return {
     pub keyword: Box<Token>,
@@ -51,6 +58,7 @@ pub struct Declaration {
 
 pub trait Visitor<T> {
     fn visit_block(&mut self, block: &Block) -> T;
+    fn visit_class(&mut self, class: &ClassDecl) -> T;
     fn visit_expression(&mut self, expression: &Expr) -> T;
     fn visit_function(&mut self, function: &FunctionDecl) -> T;
     fn visit_if(&mut self, if_stmt: &If) -> T;
@@ -62,6 +70,7 @@ pub trait Visitor<T> {
 
 pub trait MutableVisitor<'a, T> {
     fn visit_block(&mut self, block: &'a mut Block) -> T;
+    fn visit_class(&mut self, class: &'a mut ClassDecl) -> T;
     fn visit_expression(&mut self, expression: &'a mut Expr) -> T;
     fn visit_function(&mut self, function: &'a mut FunctionDecl) -> T;
     fn visit_if(&mut self, if_stmt: &'a mut If) -> T;
@@ -75,6 +84,7 @@ impl<'a> Stmt {
     pub fn accept<T, V: Visitor<T>>(&'a self, visitor: &mut V) -> T {
         match self {
             Stmt::Block(block) => visitor.visit_block(block),
+            Stmt::Class(class_decl) => visitor.visit_class(class_decl),
             Stmt::Expression(expr) => visitor.visit_expression(expr),
             Stmt::Function(function) => visitor.visit_function(function),
             Stmt::If(if_stmt) => visitor.visit_if(if_stmt),
@@ -88,6 +98,7 @@ impl<'a> Stmt {
     pub fn accept_mutable<T, V: MutableVisitor<'a, T>>(&'a mut self, visitor: &mut V) -> T {
         match self {
             Stmt::Block(block) => visitor.visit_block(block),
+            Stmt::Class(class_decl) => visitor.visit_class(class_decl),
             Stmt::Expression(expr) => visitor.visit_expression(expr),
             Stmt::Function(function) => visitor.visit_function(function),
             Stmt::If(if_stmt) => visitor.visit_if(if_stmt),
@@ -140,5 +151,11 @@ impl Return {
             keyword: Box::new(keyword),
             value: value.map(|x| Box::new(x)),
         }
+    }
+}
+
+impl ClassDecl {
+    pub fn new(name: Token, methods: Vec<FunctionDecl>) -> ClassDecl {
+        ClassDecl { name: Box::new(name), methods }
     }
 }

@@ -2,7 +2,7 @@ use crate::{error, warn};
 use crate::front::expr::{
     self, Assign, Binary, Call, Expr, Grouping, Literal, Ternary, Unary, Variable,
 };
-use crate::front::stmt::{self, Block, Declaration, FunctionDecl, If, Return, Stmt, While};
+use crate::front::stmt::{self, Block, Declaration, FunctionDecl, If, Return, Stmt, While, ClassDecl};
 use crate::front::token::Token;
 use std::collections::HashMap;
 
@@ -124,6 +124,11 @@ impl<'a> stmt::MutableVisitor<'a, ()> for Resolver {
         self.begin_scope();
         self.resolve_stmts(&mut block.statements);
         self.end_scope();
+    }
+
+    fn visit_class(&mut self, class: &'a mut ClassDecl) -> () {
+        self.declare(&class.name);
+        self.define(&class.name);
     }
 
     fn visit_expression(&mut self, expression: &mut Expr) -> () {
