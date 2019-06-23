@@ -5,6 +5,7 @@ use crate::front::interpreter::Interpreter;
 use std::collections::HashMap;
 use std::fmt;
 use std::rc::Rc;
+use core::borrow::Borrow;
 
 #[derive(Clone)]
 pub struct Class {
@@ -28,15 +29,23 @@ impl Callable for Class {
     }
 
     fn arity(&self) -> usize {
-        0
+        if let Some(initializer) = self.find_method(&self.name) {
+            initializer.arity()
+        } else {
+            0
+        }
     }
 
     fn call(
         &self,
-        _interpreter: &mut Interpreter,
-        _arguments: Vec<Rc<Value>>,
+        interpreter: &mut Interpreter,
+        arguments: Vec<Rc<Value>>,
     ) -> Result<Rc<Value>, Box<dyn RuntimeError>> {
-        Ok(Rc::new(Value::Instance(Instance::new(self.clone()))))
+        let instance = Value::Instance(Rc::new(Instance::new(self.clone())));
+        if let Some(initializer) = self.find_method(&self.name) {
+            initializer.bind(instance.clone()).call(interpreter, arguments)?;
+        }
+        Ok(Rc::new(instance))
     }
 }
 

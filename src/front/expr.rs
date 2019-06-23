@@ -82,7 +82,7 @@ pub enum Value {
     Literal(Literal),
     Callable(Rc<Box<dyn Callable>>),
     Class(Class),
-    Instance(Instance),
+    Instance(Rc<Instance>),
 }
 
 #[derive(Debug, Clone)]

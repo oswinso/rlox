@@ -7,7 +7,7 @@ use crate::front::token_type::TokenType;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Environment {
     head: Link,
 }
@@ -41,6 +41,7 @@ impl Variable {
     }
 }
 
+#[derive(Debug)]
 pub struct ScopedEnvironment {
     values: HashMap<String, Variable>,
     parent: Link,

@@ -6,31 +6,35 @@ use crate::front::statement_result::StatementResult;
 use crate::front::stmt::FunctionDecl;
 
 use crate::front::environment::Environment;
+use crate::front::token::Token;
+use crate::front::token_type::TokenType;
 use std::fmt;
 use std::rc::Rc;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Function {
     declaration: FunctionDecl,
     closure: Environment,
+    is_initializer: bool,
 }
 
 impl Function {
-    pub fn new(declaration: FunctionDecl, closure: Environment) -> Function {
+    pub fn new(declaration: FunctionDecl, closure: Environment, is_initializer: bool) -> Function {
         Function {
             declaration,
             closure,
+            is_initializer,
         }
     }
 
-    pub fn bind(&self, instance: &Instance) -> Self {
+    pub fn bind(&self, instance: Value) -> Self {
         let mut environment = self.closure.clone();
         environment.push();
         environment.define(
             "this".into(),
-            Some(Rc::new(Value::Instance(instance.clone()))),
+            Some(Rc::new(instance)),
         );
-        Function::new(self.declaration.clone(), environment)
+        Function::new(self.declaration.clone(), environment, self.is_initializer)
     }
 }
 
@@ -53,20 +57,42 @@ impl Callable for Function {
         for (param, arg) in self.declaration.params.iter().zip(arguments.iter()) {
             environment.define(param.lexeme.clone(), Some(arg.clone()));
         }
-        // WTF I don't remember why
-        //        if let Some(Value::Literal(Literal::Number(first))) = arguments.first() {
-        //            if *first < -10.0 {
-        //                panic!("RIP")
-        //            }
-        //        }
+
         let error = interpreter.execute_block(&self.declaration.body, Some(environment));
-        match error {
+        let ret = match error {
             Some(res) => match res {
                 StatementResult::Return(return_object) => Ok(Rc::new(return_object.value)),
                 StatementResult::RuntimeError(error) => Err(error),
                 _ => panic!("Lmao got a break"),
             },
-            None => Ok(Rc::new(Value::Literal(Literal::Nil))),
+            None => {
+                let ret = if self.is_initializer {
+                    self.closure.get_at(&Token {
+                        token_type: TokenType::This,
+                        lexeme: "this".to_string(),
+                        line: 314159
+                    }, 0)?
+                } else {
+                    Rc::new(Value::Literal(Literal::Nil))
+                };
+                Ok(ret)
+            },
+        };
+
+        if self.is_initializer {
+            let this = self.closure.get_at(
+                &Token {
+                    token_type: TokenType::This,
+                    lexeme: "this".to_string(),
+                    line: 314159,
+                },
+                0,
+            );
+            println!(">> This: ");
+            dbg!(&this);
+            this
+        } else {
+            ret
         }
     }
 }

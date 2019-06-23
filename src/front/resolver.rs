@@ -8,12 +8,20 @@ use crate::front::token::Token;
 use crate::{error, warn};
 use core::borrow::BorrowMut;
 use std::collections::HashMap;
+use crate::front::resolver::FunctionType::Function;
 
 #[derive(PartialEq)]
 enum FunctionType {
     None,
     Function,
+    Initializer,
     Method,
+}
+
+#[derive(PartialEq)]
+enum ClassType {
+    None,
+    Class,
 }
 
 #[derive(Debug)]
@@ -36,6 +44,7 @@ impl VariableStatus {
 pub struct Resolver {
     scopes: Vec<HashMap<String, VariableStatus>>,
     current_function: FunctionType,
+    current_class: ClassType,
 }
 
 impl Resolver {
@@ -43,6 +52,7 @@ impl Resolver {
         Resolver {
             scopes: Vec::new(),
             current_function: FunctionType::None,
+            current_class: ClassType::None,
         }
     }
 
@@ -155,6 +165,7 @@ impl<'a> stmt::MutableVisitor<'a, ()> for Resolver {
     }
 
     fn visit_class(&mut self, class: &mut ClassDecl) -> () {
+        let enclosing_class = std::mem::replace(&mut self.current_class, ClassType::Class);
         self.declare(&class.name);
 
         self.begin_scope();
@@ -167,10 +178,18 @@ impl<'a> stmt::MutableVisitor<'a, ()> for Resolver {
             .insert("this".into(), self_variable);
 
         for method in &mut class.methods {
-            self.resolve_function(method, FunctionType::Method);
+            let function_type = if method.name.lexeme == class.name.lexeme {
+                FunctionType::Initializer
+            } else {
+                FunctionType::Method
+            };
+
+            self.resolve_function(method, function_type);
         }
         self.end_scope();
         self.define(&class.name);
+
+        std::mem::replace(&mut self.current_class, enclosing_class);
     }
 
     fn visit_expression(&mut self, expression: &mut Expr) -> () {
@@ -203,6 +222,9 @@ impl<'a> stmt::MutableVisitor<'a, ()> for Resolver {
         }
 
         if let Some(ref mut expr) = ret.value {
+            if self.current_function == FunctionType::Initializer {
+                error(ret.keyword.line, "Cannot return values from an initializer");
+            }
             self.resolve_expr(expr);
         }
     }
@@ -271,7 +293,14 @@ impl<'a> expr::MutableVisitor<'a, ()> for Resolver {
     }
 
     fn visit_this(&mut self, this: &mut This) -> () {
-        self.resolve_local(&mut this.variable);
+        if self.current_class == ClassType::None {
+            error(
+                this.variable.name.line,
+                "Cannot use 'this' keyword outside of a class.",
+            )
+        } else {
+            self.resolve_local(&mut this.variable);
+        }
     }
 
     fn visit_variable(&mut self, variable: &mut Variable) -> () {

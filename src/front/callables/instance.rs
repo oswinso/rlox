@@ -11,7 +11,7 @@ use std::rc::Rc;
 #[derive(Clone)]
 pub struct Instance {
     class: Class,
-    fields: RefCell<HashMap<String, Value>>,
+    pub fields: RefCell<HashMap<String, Value>>,
 }
 
 impl Instance {
@@ -22,13 +22,13 @@ impl Instance {
         }
     }
 
-    pub fn get(&self, name: &Token) -> Result<Value, Box<dyn RuntimeError>> {
+    pub fn get(&self, name: &Token, rc_to_self: Rc<Instance>) -> Result<Value, Box<dyn RuntimeError>> {
         if let Some(property) = self.fields.borrow().get(&name.lexeme) {
             return Ok(property.clone());
         }
 
         if let Some(method) = self.class.find_method(&name.lexeme) {
-            return Ok(Value::Callable(Rc::new(Box::new(method.bind(self)))));
+            return Ok(Value::Callable(Rc::new(Box::new(method.bind(Value::Instance(rc_to_self))))));
         }
 
         Err(UndefinedPropertyError::new(format!("{}", self), name.clone()).into())
@@ -47,7 +47,7 @@ impl fmt::Display for Instance {
 
 impl fmt::Debug for Instance {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{} instance", self.class)
+        write!(f, "{} instance. Fields: {:?}", self.class, self.fields)
     }
 }
 

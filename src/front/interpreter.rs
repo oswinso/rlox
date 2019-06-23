@@ -323,7 +323,7 @@ impl expr::Visitor<'_, RuntimeResult> for Interpreter {
 
     fn visit_get(&mut self, get: &Get) -> RuntimeResult {
         if let Value::Instance(ref instance) = self.evaluate(&get.object)?.borrow() {
-            Ok(Rc::new(instance.get(get.name.borrow())?))
+            Ok(Rc::new(instance.get(get.name.borrow(), instance.clone())?))
         } else {
             Err(TypeError::new(*get.name.clone(), "Only instances have properties").into())
         }
@@ -361,10 +361,12 @@ impl expr::Visitor<'_, RuntimeResult> for Interpreter {
 
     fn visit_set(&mut self, set: &Set) -> RuntimeResult {
         let x = self.evaluate(&set.object)?;
+        println!("Setting {}", x);
         if let Value::Instance(ref instance) = x.borrow() {
             let value = self.evaluate(&set.value)?;
             let y = &*value.clone();
             instance.set(&set.name, y.clone());
+            dbg!(instance);
             Ok(value)
         } else {
             Err(TypeError::new(*set.name.clone(), "Only instances have fields").into())
@@ -403,7 +405,7 @@ impl stmt::Visitor<Option<StatementResult>> for Interpreter {
 
         let mut methods = HashMap::new();
         for method in &class_decl.methods {
-            let function = Function::new(method.clone(), self.environment.clone());
+            let function = Function::new(method.clone(), self.environment.clone(), method.name.lexeme == class_decl.name.lexeme);
             methods.insert(method.name.lexeme.clone(), function);
         }
 
@@ -436,7 +438,7 @@ impl stmt::Visitor<Option<StatementResult>> for Interpreter {
     }
 
     fn visit_function(&mut self, function_decl: &FunctionDecl) -> Option<StatementResult> {
-        let function = Function::new(function_decl.clone(), self.environment.clone());
+        let function = Function::new(function_decl.clone(), self.environment.clone(), false);
         let callable = Value::Callable(Rc::new(Box::new(function)));
         self.environment
             .define(function_decl.name.lexeme.clone(), Some(Rc::new(callable)));
