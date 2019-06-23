@@ -92,6 +92,10 @@ impl Visitor<'_, String> for AstPrinter {
         )
     }
 
+    fn visit_this(&mut self, this: &This) -> String {
+        unimplemented!()
+    }
+
     fn visit_variable(&mut self, variable: &Variable) -> String {
         variable.name.lexeme.clone()
     }

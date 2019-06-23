@@ -3,9 +3,10 @@ use crate::front::callables::Class;
 use crate::front::errors::{RuntimeError, UndefinedPropertyError};
 use crate::front::expr::Value;
 use crate::front::token::Token;
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt;
-use std::cell::RefCell;
+use std::rc::Rc;
 
 #[derive(Clone)]
 pub struct Instance {
@@ -23,10 +24,14 @@ impl Instance {
 
     pub fn get(&self, name: &Token) -> Result<Value, Box<dyn RuntimeError>> {
         if let Some(property) = self.fields.borrow().get(&name.lexeme) {
-            Ok(property.clone())
-        } else {
-            Err(UndefinedPropertyError::new(format!("{}", self), name.clone()).into())
+            return Ok(property.clone());
         }
+
+        if let Some(method) = self.class.find_method(&name.lexeme) {
+            return Ok(Value::Callable(Rc::new(Box::new(method.bind(self)))));
+        }
+
+        Err(UndefinedPropertyError::new(format!("{}", self), name.clone()).into())
     }
 
     pub fn set(&self, name: &Token, value: Value) {

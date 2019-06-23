@@ -1,5 +1,6 @@
 use crate::front::expr::{
-    self, Assign, Binary, Call, Expr, Get, Grouping, Literal, Set, Ternary, Unary, Value, Variable,
+    self, Assign, Binary, Call, Expr, Get, Grouping, Literal, Set, Ternary, This, Unary, Value,
+    Variable,
 };
 use crate::front::stmt::{
     self, Block, ClassDecl, Declaration, FunctionDecl, If, Return, Stmt, While,
@@ -15,6 +16,7 @@ use crate::front::return_object::ReturnObject;
 use crate::front::statement_result::StatementResult;
 use crate::runtime_error;
 use core::borrow::{Borrow, BorrowMut};
+use std::collections::HashMap;
 use std::rc::Rc;
 
 pub struct Interpreter {
@@ -39,8 +41,10 @@ impl Interpreter {
         let funcs: Vec<Rc<Box<dyn Callable>>> = vec![Clock::new()];
 
         for callable in funcs {
-            self.environment
-                .define(callable.name().to_owned(), Some(Rc::new(Value::Callable(callable))))
+            self.environment.define(
+                callable.name().to_owned(),
+                Some(Rc::new(Value::Callable(callable))),
+            )
         }
     }
 
@@ -355,7 +359,7 @@ impl expr::Visitor<'_, RuntimeResult> for Interpreter {
         self.handle_unary(&unary.operator, x.clone())
     }
 
-    fn visit_set(&mut self, set: &Set) -> RuntimeResult{
+    fn visit_set(&mut self, set: &Set) -> RuntimeResult {
         let x = self.evaluate(&set.object)?;
         if let Value::Instance(ref instance) = x.borrow() {
             let value = self.evaluate(&set.value)?;
@@ -376,6 +380,10 @@ impl expr::Visitor<'_, RuntimeResult> for Interpreter {
         }
     }
 
+    fn visit_this(&mut self, this: &This) -> Result<Rc<Value>, Box<dyn RuntimeError>> {
+        self.lookup_variable(&this.variable)
+    }
+
     fn visit_variable(&mut self, variable: &Variable) -> RuntimeResult {
         self.lookup_variable(variable)
     }
@@ -392,7 +400,15 @@ impl stmt::Visitor<Option<StatementResult>> for Interpreter {
     fn visit_class(&mut self, class_decl: &ClassDecl) -> Option<StatementResult> {
         self.environment
             .define(class_decl.name.lexeme.clone(), None);
-        let class = Class::new(class_decl.name.lexeme.clone());
+
+        let mut methods = HashMap::new();
+        for method in &class_decl.methods {
+            let function = Function::new(method.clone(), self.environment.clone());
+            methods.insert(method.name.lexeme.clone(), function);
+        }
+
+        let class = Class::new(class_decl.name.lexeme.clone(), methods);
+
         self.environment
             .assign(&class_decl.name, Value::Class(class));
         None
@@ -412,7 +428,7 @@ impl stmt::Visitor<Option<StatementResult>> for Interpreter {
                         };
                         None
                     }
-                    _ => None
+                    _ => None,
                 }
             }
             Err(error) => Some(error.into()),
@@ -467,7 +483,7 @@ impl stmt::Visitor<Option<StatementResult>> for Interpreter {
             Ok(value) => {
                 let x = &*value.clone();
                 Some(ReturnObject::new(x.clone()).into())
-            },
+            }
             Err(error) => Some(error.into()),
         }
     }

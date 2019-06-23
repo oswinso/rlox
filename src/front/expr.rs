@@ -14,10 +14,16 @@ pub enum Expr {
     Literal(Literal),
     Logical(Binary),
     Set(Set),
+    This(This),
     Unary(Unary),
     Ternary(Ternary),
     Variable(Variable),
 }
+#[derive(Debug, Clone)]
+pub struct This {
+    pub variable: Box<Variable>,
+}
+
 #[derive(Debug, Clone)]
 pub struct Set {
     pub object: Box<Expr>,
@@ -108,6 +114,7 @@ pub trait Visitor<'a, T> {
     fn visit_unary(&mut self, unary: &'a Unary) -> T;
     fn visit_set(&mut self, set: &'a Set) -> T;
     fn visit_ternary(&mut self, ternary: &'a Ternary) -> T;
+    fn visit_this(&mut self, this: &'a This) -> T;
     fn visit_variable(&mut self, variable: &'a Variable) -> T;
 }
 
@@ -122,6 +129,7 @@ pub trait MutableVisitor<'a, T> {
     fn visit_unary(&mut self, unary: &'a mut Unary) -> T;
     fn visit_set(&mut self, set: &'a mut Set) -> T;
     fn visit_ternary(&mut self, ternary: &'a mut Ternary) -> T;
+    fn visit_this(&mut self, this: &'a mut This) -> T;
     fn visit_variable(&mut self, variable: &'a mut Variable) -> T;
 }
 
@@ -138,6 +146,7 @@ impl<'a> Expr {
             Expr::Unary(unary) => visitor.visit_unary(unary),
             Expr::Set(set) => visitor.visit_set(set),
             Expr::Ternary(ternary) => visitor.visit_ternary(ternary),
+            Expr::This(this) => visitor.visit_this(this),
             Expr::Variable(variable) => visitor.visit_variable(variable),
         }
     }
@@ -154,6 +163,7 @@ impl<'a> Expr {
             Expr::Unary(unary) => visitor.visit_unary(unary),
             Expr::Set(set) => visitor.visit_set(set),
             Expr::Ternary(ternary) => visitor.visit_ternary(ternary),
+            Expr::This(this) => visitor.visit_this(this),
             Expr::Variable(variable) => visitor.visit_variable(variable),
         }
     }
@@ -230,6 +240,14 @@ impl Set {
             object: Box::new(expr),
             name: Box::new(name),
             value: Box::new(value),
+        }
+    }
+}
+
+impl This {
+    pub fn new(token: Token) -> This {
+        This {
+            variable: Box::new(Variable::new(token)),
         }
     }
 }

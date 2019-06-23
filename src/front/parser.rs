@@ -406,6 +406,7 @@ impl Parser {
                 self.consume(TokenType::RightParen, "Expected ')' after expression.");
                 Some(Expr::Grouping(Grouping::new(expr)))
             }
+            TokenType::This => Some(Expr::This(This::new(self.previous().clone()))),
             TokenType::Identifier(string) => {
                 Some(Expr::Variable(Variable::new(self.previous().clone())))
             }

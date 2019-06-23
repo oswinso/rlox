@@ -1,5 +1,5 @@
 use crate::front::expr::{
-    self, Assign, Binary, Call, Expr, Get, Grouping, Literal, Set, Ternary, Unary, Variable,
+    self, Assign, Binary, Call, Expr, Get, Grouping, Literal, Set, Ternary, This, Unary, Variable,
 };
 use crate::front::stmt::{
     self, Block, ClassDecl, Declaration, FunctionDecl, If, Return, Stmt, While,
@@ -13,8 +13,10 @@ use std::collections::HashMap;
 enum FunctionType {
     None,
     Function,
+    Method,
 }
 
+#[derive(Debug)]
 struct VariableStatus {
     declaration_token: Token,
     defined: bool,
@@ -132,8 +134,15 @@ impl Resolver {
     }
 
     fn define(&mut self, token: &Token) {
-        if let Some(scope) = self.scopes.last_mut() {
-            scope.get_mut(&token.lexeme).unwrap().defined = true;
+        if let Some(last) = self.scopes.last_mut() {
+            if let Some(scope) = last.get_mut(&token.lexeme) {
+                scope.defined = true;
+            } else {
+                panic!(
+                    "Uh.... {} doesn't live in this scope?\n[line {}]",
+                    token.lexeme, token.line
+                )
+            }
         }
     }
 }
@@ -145,8 +154,22 @@ impl<'a> stmt::MutableVisitor<'a, ()> for Resolver {
         self.end_scope();
     }
 
-    fn visit_class(&mut self, class: &'a mut ClassDecl) -> () {
+    fn visit_class(&mut self, class: &mut ClassDecl) -> () {
         self.declare(&class.name);
+
+        self.begin_scope();
+        let mut self_variable = VariableStatus::new(*class.name.clone());
+        self_variable.defined = true;
+        self_variable.used = true;
+        self.scopes
+            .last_mut()
+            .unwrap()
+            .insert("this".into(), self_variable);
+
+        for method in &mut class.methods {
+            self.resolve_function(method, FunctionType::Method);
+        }
+        self.end_scope();
         self.define(&class.name);
     }
 
@@ -236,7 +259,7 @@ impl<'a> expr::MutableVisitor<'a, ()> for Resolver {
         self.resolve_expr(&mut unary.right);
     }
 
-    fn visit_set(&mut self, set: &'a mut Set) -> () {
+    fn visit_set(&mut self, set: &mut Set) -> () {
         self.resolve_expr(set.object.borrow_mut());
         self.resolve_expr(set.value.borrow_mut());
     }
@@ -245,6 +268,10 @@ impl<'a> expr::MutableVisitor<'a, ()> for Resolver {
         self.resolve_expr(&mut ternary.condition);
         self.resolve_expr(&mut ternary.true_branch);
         self.resolve_expr(&mut ternary.false_branch);
+    }
+
+    fn visit_this(&mut self, this: &mut This) -> () {
+        self.resolve_local(&mut this.variable);
     }
 
     fn visit_variable(&mut self, variable: &mut Variable) -> () {

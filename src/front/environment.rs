@@ -14,6 +14,7 @@ pub struct Environment {
 
 type Link = Option<Rc<RefCell<ScopedEnvironment>>>;
 
+#[derive(Debug)]
 pub struct Variable {
     pub defined: bool,
     pub value: Rc<Value>,
@@ -170,20 +171,24 @@ impl ScopedEnvironment {
     }
 
     pub fn get(&self, token: &Token) -> Result<Rc<Value>, Box<dyn RuntimeError>> {
-        if let TokenType::Identifier(name) = &token.token_type {
-            if let Some(variable) = self.values.get(name) {
-                if variable.defined {
-                    Ok(variable.value.clone())
-                } else {
-                    Err(UndefinedVariableError::new(token.clone()).into())
-                }
-            } else if let Some(parent) = self.parent.as_ref() {
-                parent.borrow().get(token)
+        let name = match &token.token_type {
+            TokenType::Identifier(name) => name,
+            TokenType::This => "this",
+            _ => panic!(
+                "Non Identifier token {} used to get key from environment!",
+                token
+            ),
+        };
+        if let Some(variable) = self.values.get(name) {
+            if variable.defined {
+                Ok(variable.value.clone())
             } else {
                 Err(UndefinedVariableError::new(token.clone()).into())
             }
+        } else if let Some(parent) = self.parent.as_ref() {
+            parent.borrow().get(token)
         } else {
-            panic!("Non Identifier token used to get key from environment!")
+            Err(UndefinedVariableError::new(token.clone()).into())
         }
     }
 }
