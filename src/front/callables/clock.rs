@@ -39,10 +39,10 @@ impl fmt::Display for Clock {
 }
 
 impl Clock {
-    pub fn new() -> Rc<Box<dyn Callable>> {
-        Rc::new(Box::new(Clock {
+    pub fn new() -> Box<dyn Callable> {
+        Box::new(Clock {
             name: "clock".to_string(),
             arity: 0,
-        }))
+        })
     }
 }

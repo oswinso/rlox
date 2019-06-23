@@ -89,7 +89,6 @@ impl Callable for Function {
                 0,
             );
             println!(">> This: ");
-            dbg!(&this);
             this
         } else {
             ret

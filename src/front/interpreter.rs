@@ -7,7 +7,7 @@ use crate::front::token_type::TokenType;
 
 use crate::front::errors::{IncorrectArgumentsError, RuntimeError, TypeError, UndefinedPropertyError};
 
-use crate::front::callables::{Callable, Class, Clock, Function};
+use crate::front::callables::{Callable, Class, Function, ExternalFunctions};
 use crate::front::environment::Environment;
 use crate::front::return_object::ReturnObject;
 use crate::front::statement_result::StatementResult;
@@ -35,12 +35,10 @@ impl Interpreter {
     }
 
     pub fn define_globals(&mut self) {
-        let funcs: Vec<Rc<Box<dyn Callable>>> = vec![Clock::new()];
-
-        for callable in funcs {
-            self.environment.define(
+        for callable in ExternalFunctions::get() {
+            self.globals.define(
                 callable.name().to_owned(),
-                Some(Rc::new(Value::Callable(callable))),
+                Some(Rc::new(Value::Callable(Rc::new(callable)))),
             )
         }
     }
@@ -363,7 +361,6 @@ impl expr::Visitor<'_, RuntimeResult> for Interpreter {
             let value = self.evaluate(&set.value)?;
             let y = &*value.clone();
             instance.set(&set.name, y.clone());
-            dbg!(instance);
             Ok(value)
         } else {
             Err(TypeError::new(*set.name.clone(), "Only instances have fields").into())

@@ -6,6 +6,8 @@ use crate::front::token::Token;
 use crate::{error, warn};
 use core::borrow::BorrowMut;
 use std::collections::HashMap;
+use crate::front::callables::ExternalFunctions;
+use crate::front::token_type::TokenType;
 
 #[derive(PartialEq)]
 enum FunctionType {
@@ -56,8 +58,22 @@ impl Resolver {
 
     pub fn resolve(&mut self, statements: &mut [Stmt]) {
         self.begin_scope();
+        self.setup_external_functions();
         self.resolve_stmts(statements);
         self.end_scope();
+    }
+
+    pub fn setup_external_functions(&mut self) {
+        for callable in ExternalFunctions::get() {
+            let mut variable_status = VariableStatus::new(Token {
+                token_type: TokenType::Identifier(callable.name().into()),
+                lexeme: callable.name().into(),
+                line: 0
+            });
+            variable_status.defined = true;
+            variable_status.used = true;
+            self.scopes.last_mut().unwrap().insert(callable.name().into(), variable_status);
+        }
     }
 
     fn resolve_stmt(&mut self, statement: &mut Stmt) {
