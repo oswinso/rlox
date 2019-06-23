@@ -43,6 +43,14 @@ impl Parser {
         let name = self
             .consume(TokenType::Identifier("".into()), "Expected class name")?
             .clone();
+
+        let superclass = if self.match_tokens(vec![TokenType::Less]) {
+            let identifier = self.consume(TokenType::Identifier("".into()), "Expected superclass name")?.clone();
+            Some(Box::new(Variable::new(identifier)))
+        } else {
+            None
+        };
+
         self.consume(TokenType::LeftBrace, "Expected '{' before class body");
 
         let mut methods = Vec::new();
@@ -53,7 +61,7 @@ impl Parser {
         }
 
         self.consume(TokenType::RightBrace, "Expected '}' after class body");
-        Some(Stmt::Class(ClassDecl::new(name, methods)))
+        Some(Stmt::Class(ClassDecl::new(name, methods, superclass)))
     }
 
     fn function(&mut self, kind: &str) -> Option<Stmt> {
@@ -409,6 +417,12 @@ impl Parser {
             TokenType::This => Some(Expr::This(This::new(self.previous().clone()))),
             TokenType::Identifier(string) => {
                 Some(Expr::Variable(Variable::new(self.previous().clone())))
+            }
+            TokenType::Super => {
+                let keyword = self.previous().clone();
+                self.consume(TokenType::Dot, "Expected '.' after super keyword.");
+                let method = self.consume(TokenType::Identifier("".into()), "Expected superclass name")?.clone();
+                Some(Expr::Super(Super::new(Variable::new(keyword), method)))
             }
             c => {
                 println!("Token: {:?}", c);

@@ -27,12 +27,12 @@ impl Function {
         }
     }
 
-    pub fn bind(&self, instance: Value) -> Self {
+    pub fn bind(&self, instance: Rc<Value>) -> Self {
         let mut environment = self.closure.clone();
         environment.push();
         environment.define(
             "this".into(),
-            Some(Rc::new(instance)),
+            Some(instance),
         );
         Function::new(self.declaration.clone(), environment, self.is_initializer)
     }

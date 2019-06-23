@@ -28,7 +28,7 @@ impl Instance {
         }
 
         if let Some(method) = self.class.find_method(&name.lexeme) {
-            return Ok(Value::Callable(Rc::new(Box::new(method.bind(Value::Instance(rc_to_self))))));
+            return Ok(Value::Callable(Rc::new(Box::new(method.bind(Rc::new(Value::Instance(rc_to_self)))))));
         }
 
         Err(UndefinedPropertyError::new(format!("{}", self), name.clone()).into())

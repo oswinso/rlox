@@ -1,14 +1,11 @@
-use crate::front::expr::{
-    self, Assign, Binary, Call, Expr, Get, Grouping, Literal, Set, Ternary, This, Unary, Value,
-    Variable,
-};
+use crate::front::expr::{self, Assign, Binary, Call, Expr, Get, Grouping, Literal, Set, Ternary, This, Unary, Value, Variable, Super};
 use crate::front::stmt::{
     self, Block, ClassDecl, Declaration, FunctionDecl, If, Return, Stmt, While,
 };
 use crate::front::token::Token;
 use crate::front::token_type::TokenType;
 
-use crate::front::errors::{IncorrectArgumentsError, RuntimeError, TypeError};
+use crate::front::errors::{IncorrectArgumentsError, RuntimeError, TypeError, UndefinedPropertyError};
 
 use crate::front::callables::{Callable, Class, Clock, Function};
 use crate::front::environment::Environment;
@@ -373,6 +370,31 @@ impl expr::Visitor<'_, RuntimeResult> for Interpreter {
         }
     }
 
+    fn visit_super(&mut self, super_expr: &Super) -> Result<Rc<Value>, Box<dyn RuntimeError>> {
+        let depth = super_expr.keyword.depth.unwrap();
+        let superclass = self.environment.get_at(&super_expr.keyword.name, depth)?;
+        let object = self.environment.get_at(&Token {
+            token_type: TokenType::This,
+            lexeme: "this".to_string(),
+            line: 314159
+        }, depth - 1)?;
+        if let Value::Class(class) = superclass.borrow() {
+            let method = class.find_method(&super_expr.method.lexeme);
+            if let Some(method) = method {
+                if let Value::Instance(this) = object.borrow() {
+                    let bound_method = method.bind(object);
+                    Ok(Rc::new(Value::Callable(Rc::new(Box::new(bound_method)))))
+                } else {
+                    panic!("'this' isn't an instance...")
+                }
+            } else {
+                Err(UndefinedPropertyError::new(class.name().into(), *super_expr.method.clone()).into())
+            }
+        } else {
+            panic!("Super wasn't a class...")
+        }
+    }
+
     fn visit_ternary(&mut self, ternary: &Ternary) -> RuntimeResult {
         let condition = self.evaluate(&ternary.condition)?;
         if self.is_truthy(&condition) {
@@ -400,8 +422,29 @@ impl stmt::Visitor<Option<StatementResult>> for Interpreter {
     }
 
     fn visit_class(&mut self, class_decl: &ClassDecl) -> Option<StatementResult> {
+        let superclass = if let Some(variable) = &class_decl.superclass {
+            let superclass = self.evaluate(&Expr::Variable(*variable.clone()));
+            match superclass {
+                Ok(value) => {
+                    if let Value::Class(class) = value.borrow() {
+                        Some(Box::new(class.clone()))
+                    } else {
+                        return Some(StatementResult::RuntimeError(TypeError::new(variable.name.clone(), "Superclass must be a class").into()));
+                    }
+                }
+                Err(err) => return Some(StatementResult::RuntimeError(err))
+            }
+        } else {
+            None
+        };
+
         self.environment
             .define(class_decl.name.lexeme.clone(), None);
+
+        if let Some(superclass) = &superclass {
+            self.environment.push();
+            self.environment.define("super".into(), Some(Rc::new(Value::Class(*superclass.clone()))));
+        }
 
         let mut methods = HashMap::new();
         for method in &class_decl.methods {
@@ -409,7 +452,11 @@ impl stmt::Visitor<Option<StatementResult>> for Interpreter {
             methods.insert(method.name.lexeme.clone(), function);
         }
 
-        let class = Class::new(class_decl.name.lexeme.clone(), methods);
+        let class = Class::new(class_decl.name.lexeme.clone(), superclass.clone(), methods);
+
+        if let Some(_) = superclass {
+            self.environment.pop();
+        }
 
         self.environment
             .assign(&class_decl.name, Value::Class(class));

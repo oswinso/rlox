@@ -14,11 +14,18 @@ pub enum Expr {
     Literal(Literal),
     Logical(Binary),
     Set(Set),
+    Super(Super),
     This(This),
     Unary(Unary),
     Ternary(Ternary),
     Variable(Variable),
 }
+#[derive(Debug, Clone)]
+pub struct Super {
+    pub keyword: Box<Variable>,
+    pub method: Box<Token>
+}
+
 #[derive(Debug, Clone)]
 pub struct This {
     pub variable: Box<Variable>,
@@ -113,6 +120,7 @@ pub trait Visitor<'a, T> {
     fn visit_logical(&mut self, logical: &'a Binary) -> T;
     fn visit_unary(&mut self, unary: &'a Unary) -> T;
     fn visit_set(&mut self, set: &'a Set) -> T;
+    fn visit_super(&mut self, super_expr: &'a Super) -> T;
     fn visit_ternary(&mut self, ternary: &'a Ternary) -> T;
     fn visit_this(&mut self, this: &'a This) -> T;
     fn visit_variable(&mut self, variable: &'a Variable) -> T;
@@ -128,6 +136,7 @@ pub trait MutableVisitor<'a, T> {
     fn visit_logical(&mut self, logical: &'a mut Binary) -> T;
     fn visit_unary(&mut self, unary: &'a mut Unary) -> T;
     fn visit_set(&mut self, set: &'a mut Set) -> T;
+    fn visit_super(&mut self, super_expr: &'a mut Super) -> T;
     fn visit_ternary(&mut self, ternary: &'a mut Ternary) -> T;
     fn visit_this(&mut self, this: &'a mut This) -> T;
     fn visit_variable(&mut self, variable: &'a mut Variable) -> T;
@@ -145,6 +154,7 @@ impl<'a> Expr {
             Expr::Logical(logical) => visitor.visit_logical(logical),
             Expr::Unary(unary) => visitor.visit_unary(unary),
             Expr::Set(set) => visitor.visit_set(set),
+            Expr::Super(super_expr) => visitor.visit_super(super_expr),
             Expr::Ternary(ternary) => visitor.visit_ternary(ternary),
             Expr::This(this) => visitor.visit_this(this),
             Expr::Variable(variable) => visitor.visit_variable(variable),
@@ -162,6 +172,7 @@ impl<'a> Expr {
             Expr::Logical(logical) => visitor.visit_logical(logical),
             Expr::Unary(unary) => visitor.visit_unary(unary),
             Expr::Set(set) => visitor.visit_set(set),
+            Expr::Super(super_expr) => visitor.visit_super(super_expr),
             Expr::Ternary(ternary) => visitor.visit_ternary(ternary),
             Expr::This(this) => visitor.visit_this(this),
             Expr::Variable(variable) => visitor.visit_variable(variable),
@@ -248,6 +259,15 @@ impl This {
     pub fn new(token: Token) -> This {
         This {
             variable: Box::new(Variable::new(token)),
+        }
+    }
+}
+
+impl Super {
+    pub fn new(keyword: Variable, method: Token) -> Super {
+        Super {
+            keyword: Box::new(keyword),
+            method: Box::new(method)
         }
     }
 }

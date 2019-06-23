@@ -11,15 +11,22 @@ use core::borrow::Borrow;
 pub struct Class {
     name: String,
     methods: HashMap<String, Function>,
+    superclass: Option<Box<Class>>
 }
 
 impl Class {
-    pub fn new(name: String, methods: HashMap<String, Function>) -> Class {
-        Class { name, methods }
+    pub fn new(name: String, superclass: Option<Box<Class>>, methods: HashMap<String, Function>) -> Class {
+        Class { name, methods, superclass }
     }
 
     pub fn find_method(&self, name: &str) -> Option<Function> {
-        Some(self.methods.get(name)?.clone())
+        if let Some(method) = self.methods.get(name) {
+            Some(method.clone())
+        } else if let Some(superclass) = &self.superclass {
+            superclass.find_method(name)
+        } else {
+            None
+        }
     }
 }
 
@@ -41,11 +48,11 @@ impl Callable for Class {
         interpreter: &mut Interpreter,
         arguments: Vec<Rc<Value>>,
     ) -> Result<Rc<Value>, Box<dyn RuntimeError>> {
-        let instance = Value::Instance(Rc::new(Instance::new(self.clone())));
+        let instance = Rc::new(Value::Instance(Rc::new(Instance::new(self.clone()))));
         if let Some(initializer) = self.find_method(&self.name) {
             initializer.bind(instance.clone()).call(interpreter, arguments)?;
         }
-        Ok(Rc::new(instance))
+        Ok(instance)
     }
 }
 

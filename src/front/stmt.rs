@@ -1,4 +1,4 @@
-use crate::front::expr::Expr;
+use crate::front::expr::{Expr, Variable};
 use crate::front::token::Token;
 
 #[derive(Debug, Clone)]
@@ -17,6 +17,7 @@ pub enum Stmt {
 pub struct ClassDecl {
     pub name: Box<Token>,
     pub methods: Vec<FunctionDecl>,
+    pub superclass: Option<Box<Variable>>
 }
 
 #[derive(Debug, Clone)]
@@ -155,10 +156,11 @@ impl Return {
 }
 
 impl ClassDecl {
-    pub fn new(name: Token, methods: Vec<FunctionDecl>) -> ClassDecl {
+    pub fn new(name: Token, methods: Vec<FunctionDecl>, superclass: Option<Box<Variable>>) -> ClassDecl {
         ClassDecl {
             name: Box::new(name),
             methods,
+            superclass
         }
     }
 }

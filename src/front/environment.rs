@@ -175,8 +175,9 @@ impl ScopedEnvironment {
         let name = match &token.token_type {
             TokenType::Identifier(name) => name,
             TokenType::This => "this",
+            TokenType::Super => "super",
             _ => panic!(
-                "Non Identifier token {} used to get key from environment!",
+                "Bad token {} used to get key from environment!",
                 token
             ),
         };

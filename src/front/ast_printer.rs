@@ -81,6 +81,10 @@ impl Visitor<'_, String> for AstPrinter {
         unimplemented!()
     }
 
+    fn visit_super(&mut self, super_expr: &Super) -> String {
+        unimplemented!()
+    }
+
     fn visit_ternary(&mut self, ternary: &Ternary) -> String {
         self.parenthesize(
             "ternary",

@@ -1,6 +1,4 @@
-use crate::front::expr::{
-    self, Assign, Binary, Call, Expr, Get, Grouping, Literal, Set, Ternary, This, Unary, Variable,
-};
+use crate::front::expr::{self, Assign, Binary, Call, Expr, Get, Grouping, Literal, Set, Ternary, This, Unary, Variable, Super};
 use crate::front::stmt::{
     self, Block, ClassDecl, Declaration, FunctionDecl, If, Return, Stmt, While,
 };
@@ -8,7 +6,6 @@ use crate::front::token::Token;
 use crate::{error, warn};
 use core::borrow::BorrowMut;
 use std::collections::HashMap;
-use crate::front::resolver::FunctionType::Function;
 
 #[derive(PartialEq)]
 enum FunctionType {
@@ -22,6 +19,7 @@ enum FunctionType {
 enum ClassType {
     None,
     Class,
+    Subclass,
 }
 
 #[derive(Debug)]
@@ -107,8 +105,9 @@ impl Resolver {
         std::mem::swap(&mut function_type, &mut self.current_function);
     }
 
-    fn begin_scope(&mut self) {
+    fn begin_scope(&mut self) -> &HashMap<String, VariableStatus> {
         self.scopes.push(HashMap::new());
+        self.scopes.last_mut().unwrap()
     }
 
     fn end_scope(&mut self) {
@@ -167,6 +166,21 @@ impl<'a> stmt::MutableVisitor<'a, ()> for Resolver {
     fn visit_class(&mut self, class: &mut ClassDecl) -> () {
         let enclosing_class = std::mem::replace(&mut self.current_class, ClassType::Class);
         self.declare(&class.name);
+        self.define(&class.name);
+
+        if let Some(superclass) = &mut class.superclass {
+            if superclass.name.lexeme == class.name.lexeme {
+                error(superclass.name.line, "A class cannot inherit from itself")
+            } else {
+                self.current_class = ClassType::Subclass;
+                self.resolve_local(superclass);
+                self.begin_scope();
+                let mut variable_status = VariableStatus::new(superclass.name.clone());
+                variable_status.defined = true;
+                variable_status.used = true;
+                self.scopes.last_mut().unwrap().insert("super".into(), variable_status);
+            }
+        }
 
         self.begin_scope();
         let mut self_variable = VariableStatus::new(*class.name.clone());
@@ -187,7 +201,10 @@ impl<'a> stmt::MutableVisitor<'a, ()> for Resolver {
             self.resolve_function(method, function_type);
         }
         self.end_scope();
-        self.define(&class.name);
+
+        if let Some(superclass) = &mut class.superclass {
+            self.end_scope();
+        }
 
         std::mem::replace(&mut self.current_class, enclosing_class);
     }
@@ -284,6 +301,15 @@ impl<'a> expr::MutableVisitor<'a, ()> for Resolver {
     fn visit_set(&mut self, set: &mut Set) -> () {
         self.resolve_expr(set.object.borrow_mut());
         self.resolve_expr(set.value.borrow_mut());
+    }
+
+    fn visit_super(&mut self, super_expr: &'a mut Super) -> () {
+        match self.current_class {
+            ClassType::None => error(super_expr.keyword.name.line, "Cannot use 'super' outside of a class"),
+            ClassType::Class => error(super_expr.keyword.name.line, "Cannot use 'super' in a class with no subclass"),
+            ClassType::Subclass => ()
+        }
+        self.resolve_local(&mut super_expr.keyword)
     }
 
     fn visit_ternary(&mut self, ternary: &mut Ternary) -> () {
