@@ -6,7 +6,7 @@ use crate::vm::Stack;
 use std::convert::TryInto;
 use std::slice::Iter;
 
-type InterpretResult = Result<(), VMError>;
+pub type InterpretResult = Result<(), VMError>;
 
 pub struct VM<'chunk> {
     chunk: &'chunk Chunk,
