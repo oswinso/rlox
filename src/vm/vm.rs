@@ -6,7 +6,7 @@ use crate::vm::Stack;
 use std::convert::TryInto;
 use std::slice::Iter;
 
-pub type InterpretResult = Result<(), VMError>;
+pub type VMResult = Result<(), RuntimeError>;
 
 pub struct VM<'chunk> {
     chunk: &'chunk Chunk,
@@ -32,7 +32,7 @@ impl<'chunk> VM<'chunk> {
         }
     }
 
-    pub fn interpret(&mut self) -> InterpretResult {
+    pub fn interpret(&mut self) -> VMResult {
         use Opcode::*;
 
         loop {

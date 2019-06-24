@@ -1,10 +1,10 @@
 use crate::bytecode::{Opcode, Value};
+use crate::compiler::{Token, TokenKind};
 use crate::vm::Stack;
 use ansi_term::{Color, Style};
 use std::fmt::Write;
 use std::io;
 use std::io::Write as IOWrite;
-use crate::compiler::Token;
 
 pub struct PrettyPrinter {
     string: String,
@@ -118,6 +118,24 @@ impl PrettyPrinter {
     pub fn token(&mut self, token: &Token) -> &mut Self {
         let format = format!("{:?}", token.ty);
         write!(self.string, "{}", self.opcode.paint(format)).unwrap();
+        self
+    }
+
+    pub fn parse_error(&mut self, token: &Token, lexeme: &str, message: &str) -> &mut Self {
+        let line = format!("[{}]", token.position.line);
+        let error_pos = match token.ty {
+            TokenKind::EOF => "Error at end".into(),
+            TokenKind::Error(_) => "Error".into(),
+            _ => format!("Error at {}:", lexeme),
+        };
+        write!(
+            self.string,
+            "{} {} {}",
+            self.line_number.paint(line),
+            error_pos,
+            self.error.paint(message)
+        )
+        .unwrap();
         self
     }
 }

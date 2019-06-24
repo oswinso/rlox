@@ -1,5 +1,3 @@
-use std::rc::Rc;
-
 #[derive(Debug, Clone)]
 pub struct Token {
     pub ty: TokenKind,
@@ -25,7 +23,7 @@ impl Position {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub enum TokenKind {
     // One character tokens
     LeftParen,
@@ -62,6 +60,26 @@ pub enum TokenKind {
     Error(String),
 
     EOF,
+}
+
+impl TokenKind {
+    pub fn error_type() -> TokenKind {
+        TokenKind::Error("".into())
+    }
+
+    pub fn try_into_error(&self) -> Option<&str> {
+        if let TokenKind::Error(message) = &self {
+            Some(message)
+        } else {
+            None
+        }
+    }
+}
+
+impl PartialEq for TokenKind {
+    fn eq(&self, other: &TokenKind) -> bool {
+        std::mem::discriminant(self) == std::mem::discriminant(other)
+    }
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]

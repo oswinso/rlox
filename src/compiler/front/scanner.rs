@@ -1,5 +1,4 @@
-use crate::compiler::TokenKind::Error;
-use crate::compiler::{Keyword, Position, Token, TokenKind};
+use crate::compiler::{Keyword, Position, Source, Token, TokenKind};
 use std::iter::Peekable;
 use std::str::Chars;
 
@@ -11,9 +10,9 @@ pub struct Scanner<'src> {
 }
 
 impl<'src> Scanner<'src> {
-    pub fn new(source: &'src str) -> Scanner<'src> {
+    pub fn new(source: Source<'src>) -> Scanner<'src> {
         Scanner {
-            source: source.chars().peekable(),
+            source: source.source.chars().peekable(),
             start: 0,
             current: 0,
             line: 1,

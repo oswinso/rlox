@@ -1,9 +1,16 @@
-use crate::compiler::compile;
+use crate::compiler::{compile, CompileError, Source};
 use crate::utils::PrettyPrinter;
-use crate::vm::InterpretResult;
+use crate::vm::{RuntimeError, VM};
 use std::fs::File;
 use std::io;
 use std::io::Read;
+
+pub enum InterpretError {
+    CompileError(CompileError),
+    RuntimeError(RuntimeError),
+}
+
+pub type InterpretResult = Result<(), InterpretError>;
 
 pub fn repl() {
     let mut input = String::new();
@@ -25,7 +32,20 @@ pub fn run_file(path: &str) {
     let result = interpret(&s);
 }
 
-pub fn interpret(source: &str) -> InterpretResult {
-    compile(source);
+pub fn interpret(src: &str) -> InterpretResult {
+    use InterpretError::*;
+
+    let source = Source::new(src);
+
+    let chunk = match compile(source) {
+        Ok(chunk) => chunk,
+        Err(err) => return Err(CompileError(err)),
+    };
+
+    let mut vm = VM::new(&chunk);
+    match vm.interpret() {
+        Ok(_) => (),
+        Err(err) => return Err(RuntimeError(err)),
+    };
     Ok(())
 }
