@@ -5,11 +5,16 @@ authors = ["Oswin So <oswinso@gmail.com>"]
 edition = "2018"
 
 [dependencies]
+ansi_term = "0.11.0"
 
 [[bin]]
 name = "rlox"
 path = "src/main.rs"
+#
+#[[bin]]
+#name = "generate_ast"
+#path = "src/tools/generate_ast/main.rs"
 
-[[bin]]
-name = "generate_ast"
-path = "src/tools/generate_ast/main.rs"
+[features]
+trace_execution = []
+default = []
