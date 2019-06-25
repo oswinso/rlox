@@ -102,7 +102,7 @@ pub enum Keyword {
     While,
 }
 
-#[derive(Ord, PartialOrd, Eq, PartialEq, Copy, Clone)]
+#[derive(Ord, Debug, PartialOrd, Eq, PartialEq, Copy, Clone)]
 #[repr(u32)]
 pub enum Precedence {
     None,
@@ -125,13 +125,14 @@ impl From<u32> for Precedence {
             0 => None,
             1 => Assignment,
             2 => Or,
-            3 => Equality,
-            4 => Comparison,
-            5 => Term,
-            6 => Factor,
-            7 => Unary,
-            8 => Call,
-            9 => Primary,
+            3 => And,
+            4 => Equality,
+            5 => Comparison,
+            6 => Term,
+            7 => Factor,
+            8 => Unary,
+            9 => Call,
+            10 => Primary,
             _ => unreachable!(),
         }
     }

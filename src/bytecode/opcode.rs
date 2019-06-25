@@ -1,3 +1,4 @@
+use core::fmt::Display;
 use std::convert::TryFrom;
 use std::fmt;
 
@@ -26,6 +27,12 @@ impl fmt::Display for Opcode {
             Div => "DIV",
         };
         write!(f, "{}", string)
+    }
+}
+
+impl fmt::Debug for Opcode {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self)
     }
 }
 

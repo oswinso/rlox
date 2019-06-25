@@ -146,12 +146,12 @@ impl<'src> Scanner<'src> {
     }
 
     fn number(&mut self) -> TokenKind {
-        while self.peek().is_digit(10) {
+        while !self.is_at_end() && self.peek().is_digit(10) {
             self.advance();
         }
 
         // Check for fractional
-        if self.peek() == '.' && self.peek_next().is_digit(10) {
+        if !self.is_at_end() && self.peek() == '.' && self.peek_next().is_digit(10) {
             self.advance(); // Consume the .
             while self.peek().is_digit(10) {
                 self.advance();

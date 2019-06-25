@@ -1,5 +1,4 @@
-use crate::compiler::{Precedence, Scanner, Source, Token, TokenKind, Compiler};
-use crate::utils::PrettyPrinter;
+use crate::compiler::{Compiler, Precedence, Scanner, Source, Token, TokenKind};
 use std::rc::Rc;
 
 pub struct Parser<'a> {
@@ -31,17 +30,16 @@ impl<'a> Parser<'a> {
         Ok(())
     }
 
-
     pub fn consume(&mut self, scanner: &mut Scanner<'a>, token_kind: TokenKind, message: &str) {
         if self.current.as_ref().unwrap().ty == token_kind {
             self.advance(scanner);
         } else {
-//            self.parser_error(message);
+            //            self.parser_error(message);
         }
     }
 }
 
-pub type ParseFn<'a> = Box<dyn FnMut(&mut Compiler) -> () + 'a>;
+pub type ParseFn<'a> = Box<dyn FnOnce(&Compiler) -> () + 'a>;
 
 pub struct ParseRule<'a> {
     pub function: Option<ParseFn<'a>>,
@@ -49,10 +47,7 @@ pub struct ParseRule<'a> {
 }
 
 impl<'a> ParseRule<'a> {
-    pub fn new(
-        function: Option<ParseFn<'a>>,
-        precedence: Precedence,
-    ) -> ParseRule<'a> {
+    pub fn new(function: Option<ParseFn<'a>>, precedence: Precedence) -> ParseRule<'a> {
         ParseRule {
             function,
             precedence,
