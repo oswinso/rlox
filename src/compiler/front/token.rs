@@ -101,3 +101,38 @@ pub enum Keyword {
     Let,
     While,
 }
+
+#[derive(Ord, PartialOrd, Eq, PartialEq, Copy, Clone)]
+#[repr(u32)]
+pub enum Precedence {
+    None,
+    Assignment,
+    Or,
+    And,
+    Equality,
+    Comparison,
+    Term,
+    Factor,
+    Unary,
+    Call,
+    Primary,
+}
+
+impl From<u32> for Precedence {
+    fn from(num: u32) -> Self {
+        use Precedence::*;
+        match num {
+            0 => None,
+            1 => Assignment,
+            2 => Or,
+            3 => Equality,
+            4 => Comparison,
+            5 => Term,
+            6 => Factor,
+            7 => Unary,
+            8 => Call,
+            9 => Primary,
+            _ => unreachable!(),
+        }
+    }
+}

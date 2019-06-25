@@ -1,3 +1,5 @@
+use std::convert::TryFrom;
+
 pub type Value = f64;
 
 pub(crate) type ConstantPointer = u8;
@@ -11,8 +13,13 @@ impl ValueArray {
         ValueArray { values: Vec::new() }
     }
 
-    pub fn write(&mut self, value: Value) -> ConstantPointer {
-        self.values.push(value);
-        (self.values.len() - 1) as u8
+    pub fn write(&mut self, value: Value) -> Result<ConstantPointer, ()> {
+        match u8::try_from(self.values.len()) {
+            Ok(index) => {
+                self.values.push(value);
+                Ok(index)
+            }
+            Err(_) => Err(()),
+        }
     }
 }

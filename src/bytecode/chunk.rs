@@ -25,7 +25,7 @@ impl Chunk {
         self.lines.push(line);
     }
 
-    pub fn add_constant(&mut self, value: Value) -> ConstantPointer {
+    pub fn add_constant(&mut self, value: Value) -> Result<ConstantPointer, ()> {
         self.constants.write(value)
     }
 }
