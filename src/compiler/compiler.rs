@@ -5,9 +5,9 @@ use crate::utils::PrettyPrinter;
 
 pub struct Compiler<'src> {
     source: Source<'src>,
-    chunk: RefCell<Chunk>,
-    scanner: RefCell<Scanner<'src>>,
-    parser: RefCell<Parser<'src>>,
+    chunk: Chunk,
+    scanner: Scanner<'src>,
+    parser: Parser<'src>,
     pub had_error: bool,
     pub panic_mode: bool,
 }
@@ -18,20 +18,20 @@ impl<'src> Compiler<'src> {
     pub fn new(source: Source<'src>) -> Compiler<'src> {
         Compiler {
             source,
-            chunk: RefCell::new(Chunk::new()),
-            scanner: RefCell::new(Scanner::new(source)),
-            parser: RefCell::new(Parser::new(source)),
+            chunk: Chunk::new(),
+            scanner: Scanner::new(source),
+            parser: Parser::new(source),
             had_error: false,
             panic_mode: false
         }
     }
 
     pub fn compile(&mut self) -> CompileResult {
-        self.parser.borrow_mut().advance(&mut self.scanner.borrow_mut());
+        self.parser.advance(&mut self.scanner);
 
         //        self.expression();
-        self.parser.borrow_mut().consume(
-            &mut self.scanner.borrow_mut(),
+        self.parser.consume(
+            &mut self.scanner,
             TokenKind::EOF,
             "Expected EOF after expression",
         );
@@ -47,7 +47,7 @@ impl<'src> Compiler<'src> {
     pub fn number(&mut self) {
         let lexeme = self
             .source
-            .get_lexeme(self.parser.borrow().previous.as_ref().unwrap().as_ref());
+            .get_lexeme(self.parser.previous.as_ref().unwrap().as_ref());
         let num = match lexeme.parse::<f64>() {
             Ok(num) => num,
             Err(error) => panic!("Tried to parse {} but rip: {}", lexeme, error),
@@ -57,15 +57,15 @@ impl<'src> Compiler<'src> {
 
     pub fn grouping(&mut self) {
         self.expression();
-        self.parser.borrow_mut().consume(
-            &mut self.scanner.borrow_mut(),
+        self.parser.consume(
+            &mut self.scanner,
             TokenKind::RightParen,
             "Expected '(' after expression.",
         );
     }
 
     pub fn unary(&mut self) {
-        let operator = self.parser.borrow().previous.as_ref().unwrap().ty.clone();
+        let operator = self.parser.previous.as_ref().unwrap().ty.clone();
 
         self.parse_precendence(Precedence::Unary);
 
@@ -76,7 +76,7 @@ impl<'src> Compiler<'src> {
     }
 
     pub fn binary(&mut self) {
-        let operator = self.parser.borrow().previous.as_ref().unwrap().ty.clone();
+        let operator = self.parser.previous.as_ref().unwrap().ty.clone();
 
         let precedence = self.get_infix_rule(&operator).precedence;
         self.parse_precendence((precedence as u32 + 1).into());
@@ -219,7 +219,7 @@ impl<'src> Compiler<'src> {
     pub fn parse_precendence(&mut self, precedence: Precedence) {
         self.advance();
 
-        let token_kind = self.parser.borrow().previous.as_ref().unwrap().ty.clone();
+        let token_kind = self.parser.previous.as_ref().unwrap().ty.clone();
         if let Some(prefix_rule) = self.get_prefix_rule(&token_kind).function {
 //            prefix_rule();
         } else {
@@ -227,31 +227,31 @@ impl<'src> Compiler<'src> {
         }
     }
 
-    pub fn emit_byte<T>(&self, byte: T)
+    pub fn emit_byte<T>(&mut self, byte: T)
     where
         T: Into<u8>,
     {
-        let line = self.parser.borrow().previous.as_ref().unwrap().position.line;
-        self.chunk.borrow_mut().write(byte.into(), line);
+        let line = self.parser.previous.as_ref().unwrap().position.line;
+        self.chunk.write(byte.into(), line);
     }
 
-    pub fn emit_bytes<T>(&self, bytes: &[T])
+    pub fn emit_bytes<T>(&mut self, bytes: &[T])
     where
         T: Into<u8> + Copy,
     {
-        let line = self.parser.borrow().previous.as_ref().unwrap().position.line;
+        let line = self.parser.previous.as_ref().unwrap().position.line;
         for &byte in bytes {
-            self.chunk.borrow_mut().write(byte.into(), line);
+            self.chunk.write(byte.into(), line);
         }
     }
 
-    pub fn emit_constant(&self, value: Value) {
+    pub fn emit_constant(&mut self, value: Value) {
         let constant = self.make_constant(value);
         self.emit_bytes(&[Opcode::Push.into(), constant]);
     }
 
-    pub fn make_constant(&self, value: Value) -> u8 {
-        match self.chunk.borrow_mut().add_constant(value) {
+    pub fn make_constant(&mut self, value: Value) -> u8 {
+        match self.chunk.add_constant(value) {
             Ok(constant_ptr) => constant_ptr,
             Err(_) => panic!("TODO: lmao go fix this error. Too many constants here"),
         }
@@ -262,13 +262,13 @@ impl<'src> Compiler<'src> {
     }
 
     fn advance(&mut self) {
-         if self.parser.borrow_mut().advance(&mut self.scanner.borrow_mut()).is_err() {
+         if self.parser.advance(&mut self.scanner).is_err() {
             self.error_at_current()
         }
     }
 
     fn error_at_current(&mut self) {
-        let token = self.parser.borrow().current.as_ref().unwrap().clone();
+        let token = self.parser.current.as_ref().unwrap().clone();
         let error_message = token.ty.try_into_error().unwrap();
         self.parser_error(error_message);
     }
@@ -279,7 +279,7 @@ impl<'src> Compiler<'src> {
         }
 
         self.panic_mode = true;
-        let token = self.parser.borrow().current.as_ref().unwrap().clone();
+        let token = self.parser.current.as_ref().unwrap().clone();
         self.error(&token, error_message)
     }
 
