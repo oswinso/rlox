@@ -2,9 +2,11 @@ use crate::bytecode::{Chunk, Opcode, Value};
 use crate::compiler::{
     CompileError, ParseFn, ParseRule, Parser, Precedence, Scanner, Source, Token, TokenKind,
 };
-use crate::debug::Disassembler;
 use crate::utils::PrettyPrinter;
 use std::fmt::Debug;
+
+#[cfg(feature = "print_code")]
+use crate::debug::Disassembler;
 
 pub struct Compiler<'src> {
     source: Source<'src>,
@@ -29,7 +31,7 @@ impl<'src> Compiler<'src> {
         }
     }
 
-    pub fn compile(&mut self) -> CompileResult {
+    pub fn compile(mut self) -> CompileResult {
         self.parser.advance(&mut self.scanner).unwrap();
 
         self.expression();
@@ -40,14 +42,18 @@ impl<'src> Compiler<'src> {
         );
         self.emit_return();
 
-        let mut d = Disassembler::new();
-        d.disassemble_chunk(&self.chunk, "lol");
-        println!("{}", d.result());
+
+        #[cfg(feature = "print_code")]
+        {
+            let mut d = Disassembler::new();
+            d.disassemble_chunk(&self.chunk, "lol");
+            println!("{}", d.result());
+        }
 
         if self.had_error {
             Err(CompileError {})
         } else {
-            Ok(Chunk::new())
+            Ok(self.chunk)
         }
     }
 
@@ -90,7 +96,7 @@ impl<'src> Compiler<'src> {
 
         match operator {
             TokenKind::Plus => self.emit_byte(Opcode::Add),
-            TokenKind::Minus => self.emit_byte(Opcode::Add),
+            TokenKind::Minus => self.emit_byte(Opcode::Sub),
             TokenKind::Star => self.emit_byte(Opcode::Mul),
             TokenKind::Slash => self.emit_byte(Opcode::Div),
             _ => unreachable!(),

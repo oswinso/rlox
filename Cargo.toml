@@ -17,4 +17,5 @@ path = "src/main.rs"
 
 [features]
 trace_execution = []
+print_code = []
 default = []

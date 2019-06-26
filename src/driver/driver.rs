@@ -17,6 +17,7 @@ pub fn repl() {
     let mut pretty_printer = PrettyPrinter::new(String::new());
 
     loop {
+        input.clear();
         pretty_printer.prompt().print();
         io::stdin().read_line(&mut input).unwrap();
         input.pop();
