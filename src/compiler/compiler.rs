@@ -4,14 +4,13 @@ use crate::compiler::{
 };
 use crate::debug::Disassembler;
 use crate::utils::PrettyPrinter;
-use std::cell::RefCell;
 use std::fmt::Debug;
 
 pub struct Compiler<'src> {
     source: Source<'src>,
-    chunk: RefCell<Chunk>,
-    scanner: RefCell<Scanner<'src>>,
-    parser: RefCell<Parser<'src>>,
+    chunk: Chunk,
+    scanner: Scanner<'src>,
+    parser: Parser<'src>,
     pub had_error: bool,
     pub panic_mode: bool,
 }
@@ -22,29 +21,27 @@ impl<'src> Compiler<'src> {
     pub fn new(source: Source<'src>) -> Compiler<'src> {
         Compiler {
             source,
-            chunk: RefCell::new(Chunk::new()),
-            scanner: RefCell::new(Scanner::new(source)),
-            parser: RefCell::new(Parser::new(source)),
+            chunk: Chunk::new(),
+            scanner: Scanner::new(source),
+            parser: Parser::new(source),
             had_error: false,
             panic_mode: false,
         }
     }
 
     pub fn compile(&mut self) -> CompileResult {
-        self.parser
-            .borrow_mut()
-            .advance(&mut self.scanner.borrow_mut());
+        self.parser.advance(&mut self.scanner).unwrap();
 
         self.expression();
-        self.parser.borrow_mut().consume(
-            &mut self.scanner.borrow_mut(),
+        self.parser.consume(
+            &mut self.scanner,
             TokenKind::EOF,
             "Expected EOF after expression",
         );
         self.emit_return();
 
         let mut d = Disassembler::new();
-        d.disassemble_chunk(&self.chunk.borrow(), "lol");
+        d.disassemble_chunk(&self.chunk, "lol");
         println!("{}", d.result());
 
         if self.had_error {
@@ -54,10 +51,10 @@ impl<'src> Compiler<'src> {
         }
     }
 
-    pub fn number(&self) {
+    pub fn number(&mut self) {
         let lexeme = self
             .source
-            .get_lexeme(self.parser.borrow().previous.as_ref().unwrap().as_ref());
+            .get_lexeme(self.parser.previous.as_ref().unwrap().as_ref());
         let num = match lexeme.parse::<f64>() {
             Ok(num) => num,
             Err(error) => panic!("Tried to parse {} but rip: {}", lexeme, error),
@@ -65,17 +62,17 @@ impl<'src> Compiler<'src> {
         self.emit_constant(num);
     }
 
-    pub fn grouping(&self) {
+    pub fn grouping(&mut self) {
         self.expression();
-        self.parser.borrow_mut().consume(
-            &mut self.scanner.borrow_mut(),
+        self.parser.consume(
+            &mut self.scanner,
             TokenKind::RightParen,
             "Expected '(' after expression.",
         );
     }
 
-    pub fn unary(&self) {
-        let operator = self.parser.borrow().previous.as_ref().unwrap().ty.clone();
+    pub fn unary(&mut self) {
+        let operator = self.parser.previous.as_ref().unwrap().ty.clone();
 
         self.parse_precendence(Precedence::Unary);
 
@@ -85,8 +82,8 @@ impl<'src> Compiler<'src> {
         }
     }
 
-    pub fn binary(&self) {
-        let operator = self.parser.borrow().previous.as_ref().unwrap().ty.clone();
+    pub fn binary(&mut self) {
+        let operator = self.parser.previous.as_ref().unwrap().ty.clone();
 
         let precedence = self.get_infix_rule(&operator).precedence;
         self.parse_precendence((precedence as u32 + 1).into());
@@ -100,33 +97,33 @@ impl<'src> Compiler<'src> {
         };
     }
 
-    pub fn get_grouping(&self) -> Option<ParseFn> {
-        Some(Box::new(|s: &Compiler| s.grouping()))
+    pub fn get_grouping<'a>() -> Option<ParseFn<'a>> {
+        Some(Box::new(|s: &mut Compiler| s.grouping()))
     }
 
-    pub fn get_unary(&self) -> Option<ParseFn> {
-        Some(Box::new(|s: &Compiler| s.unary()))
+    pub fn get_unary<'a>() -> Option<ParseFn<'a>> {
+        Some(Box::new(|s: &mut Compiler| s.unary()))
     }
 
-    pub fn get_binary(&self) -> Option<ParseFn> {
-        Some(Box::new(|s: &Compiler| s.binary()))
+    pub fn get_binary<'a>() -> Option<ParseFn<'a>> {
+        Some(Box::new(|s: &mut Compiler| s.binary()))
     }
 
-    pub fn get_number(&self) -> Option<ParseFn> {
-        Some(Box::new(|s: &Compiler| s.number()))
+    pub fn get_number<'a>() -> Option<ParseFn<'a>> {
+        Some(Box::new(|s: &mut Compiler| s.number()))
     }
 
-    pub fn get_prefix_rule<'a, 'b>(&'a self, token_kind: &'b TokenKind) -> ParseRule {
+    pub fn get_prefix_rule<'a>(&self, token_kind: &TokenKind) -> ParseRule<'a> {
         use super::Keyword::*;
         use TokenKind::*;
         match token_kind {
-            LeftParen => ParseRule::new(self.get_grouping(), Precedence::Call),
+            LeftParen => ParseRule::new(Compiler::get_grouping(), Precedence::Call),
             RightParen => ParseRule::new(None, Precedence::None),
             LeftBrace => ParseRule::new(None, Precedence::None),
             RightBrace => ParseRule::new(None, Precedence::None),
             Comma => ParseRule::new(None, Precedence::None),
             Dot => ParseRule::new(None, Precedence::Call),
-            Minus => ParseRule::new(self.get_unary(), Precedence::Term),
+            Minus => ParseRule::new(Compiler::get_unary(), Precedence::Term),
             Plus => ParseRule::new(None, Precedence::Term),
             Semicolon => ParseRule::new(None, Precedence::None),
             Slash => ParseRule::new(None, Precedence::Factor),
@@ -141,7 +138,7 @@ impl<'src> Compiler<'src> {
             GreaterEqual => ParseRule::new(None, Precedence::Comparison),
             Identifier => ParseRule::new(None, Precedence::None),
             String => ParseRule::new(None, Precedence::None),
-            Number => ParseRule::new(self.get_number(), Precedence::None),
+            Number => ParseRule::new(Compiler::get_number(), Precedence::None),
             QuestionMark => ParseRule::new(None, Precedence::None),
             Colon => ParseRule::new(None, Precedence::None),
             Keyword(keyword) => match keyword {
@@ -167,7 +164,7 @@ impl<'src> Compiler<'src> {
         }
     }
 
-    pub fn get_infix_rule<'a>(&self, token_kind: &TokenKind) -> ParseRule {
+    pub fn get_infix_rule<'a>(&self, token_kind: &TokenKind) -> ParseRule<'a> {
         use super::Keyword::*;
         use TokenKind::*;
         match token_kind {
@@ -177,11 +174,11 @@ impl<'src> Compiler<'src> {
             RightBrace => ParseRule::new(None, Precedence::None),
             Comma => ParseRule::new(None, Precedence::None),
             Dot => ParseRule::new(None, Precedence::Call),
-            Minus => ParseRule::new(self.get_binary(), Precedence::Term),
-            Plus => ParseRule::new(self.get_binary(), Precedence::Term),
+            Minus => ParseRule::new(Compiler::get_binary(), Precedence::Term),
+            Plus => ParseRule::new(Compiler::get_binary(), Precedence::Term),
             Semicolon => ParseRule::new(None, Precedence::None),
-            Slash => ParseRule::new(self.get_binary(), Precedence::Factor),
-            Star => ParseRule::new(self.get_binary(), Precedence::Factor),
+            Slash => ParseRule::new(Compiler::get_binary(), Precedence::Factor),
+            Star => ParseRule::new(Compiler::get_binary(), Precedence::Factor),
             Bang => ParseRule::new(None, Precedence::None),
             BangEqual => ParseRule::new(None, Precedence::Equality),
             Equal => ParseRule::new(None, Precedence::None),
@@ -192,7 +189,7 @@ impl<'src> Compiler<'src> {
             GreaterEqual => ParseRule::new(None, Precedence::Comparison),
             Identifier => ParseRule::new(None, Precedence::None),
             String => ParseRule::new(None, Precedence::None),
-            Number => ParseRule::new(self.get_number(), Precedence::None),
+            Number => ParseRule::new(Compiler::get_number(), Precedence::None),
             QuestionMark => ParseRule::new(None, Precedence::None),
             Colon => ParseRule::new(None, Precedence::None),
             Keyword(keyword) => match keyword {
@@ -218,123 +215,96 @@ impl<'src> Compiler<'src> {
         }
     }
 
-    pub fn expression(&self) {
+    pub fn expression(&mut self) {
         self.parse_precendence(Precedence::Assignment);
     }
 
-    pub fn parse_precendence(&self, precedence: Precedence) {
+    pub fn parse_precendence(&mut self, precedence: Precedence) {
         self.advance();
 
-        let token_kind = self.get_previous_type();
-
-        if let Some(prefix_rule) = self.get_prefix_rule(&token_kind).function {
+        if let Some(prefix_rule) = self.get_prefix_rule(&self.get_previous().ty).function {
             prefix_rule(self);
         } else {
             panic!("Expected expression");
         };
 
-        let mut other_precedence = self.get_infix_rule(&self.get_current_type()).precedence;
+        let mut other_precedence = self.get_infix_rule(&self.get_current().ty).precedence;
         while precedence <= other_precedence {
             self.advance();
-            let infix_rule = self
-                .get_infix_rule(&self.get_previous_type())
-                .function
-                .unwrap();
-            infix_rule(self);
+            if let Some(infix_rule) = self.get_infix_rule(&self.get_previous().ty).function {
+                infix_rule(self);
+            }
 
-            other_precedence = self.get_infix_rule(&self.get_current_type()).precedence;
+            other_precedence = self.get_infix_rule(&self.get_current().ty).precedence;
         }
     }
 
-    fn get_previous_type(&self) -> TokenKind {
-        self.parser.borrow().previous.as_ref().unwrap().ty.clone()
+    fn get_previous(&self) -> &Token {
+        &self.parser.previous.as_ref().unwrap()
     }
 
-    fn get_current_type(&self) -> TokenKind {
-        self.parser.borrow().current.as_ref().unwrap().ty.clone()
+    fn get_current(&self) -> &Token {
+        &self.parser.current.as_ref().unwrap()
     }
 
-    pub fn emit_byte<T>(&self, byte: T)
+    pub fn emit_byte<T>(&mut self, byte: T)
     where
         T: Into<u8> + Debug,
     {
-        let line = self
-            .parser
-            .borrow()
-            .previous
-            .as_ref()
-            .unwrap()
-            .position
-            .line;
-        self.chunk.borrow_mut().write(byte.into(), line);
+        let line = self.get_previous().position.line;
+        self.chunk.write(byte.into(), line);
     }
 
-    pub fn emit_bytes<T>(&self, bytes: &[T])
+    pub fn emit_bytes<T>(&mut self, bytes: &[T])
     where
         T: Into<u8> + Copy,
     {
-        let line = self
-            .parser
-            .borrow_mut()
-            .previous
-            .as_ref()
-            .unwrap()
-            .position
-            .line;
+        let line = self.get_previous().position.line;
         for &byte in bytes {
-            self.chunk.borrow_mut().write(byte.into(), line);
+            self.chunk.write(byte.into(), line);
         }
     }
 
-    pub fn emit_constant(&self, value: Value) {
+    pub fn emit_constant(&mut self, value: Value) {
         let constant = self.make_constant(value);
         self.emit_bytes(&[Opcode::Push.into(), constant]);
     }
 
-    pub fn make_constant(&self, value: Value) -> u8 {
-        match self.chunk.borrow_mut().add_constant(value) {
+    pub fn make_constant(&mut self, value: Value) -> u8 {
+        match self.chunk.add_constant(value) {
             Ok(constant_ptr) => constant_ptr,
             Err(_) => panic!("TODO: lmao go fix this error. Too many constants here"),
         }
     }
 
-    pub fn emit_return(&self) {
+    pub fn emit_return(&mut self) {
         self.emit_byte(Opcode::Ret);
     }
 
-    fn advance(&self) {
-        if self
-            .parser
-            .borrow_mut()
-            .advance(&mut self.scanner.borrow_mut())
-            .is_err()
-        {
-            self.error_at_current()
+    fn advance(&mut self) {
+        if self.parser.advance(&mut self.scanner).is_err() {
+            self.parser_error()
         }
     }
 
-    fn error_at_current(&self) {
-        let token = self.parser.borrow().current.as_ref().unwrap().clone();
-        let error_message = token.ty.try_into_error().unwrap();
-        self.parser_error(error_message);
-    }
-
-    fn parser_error(&self, error_message: &str) {
+    fn parser_error(&mut self) {
         if self.panic_mode {
             return;
         }
+        self.panic_mode = true;
 
-        //        self.panic_mode = true;
-        let token = self.parser.borrow().current.as_ref().unwrap().clone();
-        //        self.error(&token, error_message)
+        let error_message = self.parser.current.as_ref().unwrap().ty.try_into_error().unwrap();
+        let token = self.parser.current.as_ref().unwrap().clone();
+
+        let lexeme = self.source.get_lexeme(&token);
+        Compiler::error(lexeme, &mut self.had_error, &token, error_message)
     }
 
-    fn error(&mut self, token: &Token, message: &str) {
-        let lexeme = self.source.get_lexeme(&token);
+    fn error(lexeme: &str, error: &mut bool, token: &Token, message: &str) {
         PrettyPrinter::new(String::new())
             .parse_error(token, lexeme, message)
             .newline()
             .print();
-        self.had_error = true;
+        *error = true;
     }
 }

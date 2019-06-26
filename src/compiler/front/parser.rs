@@ -39,7 +39,7 @@ impl<'a> Parser<'a> {
     }
 }
 
-pub type ParseFn<'a> = Box<dyn FnOnce(&Compiler) -> () + 'a>;
+pub type ParseFn<'a> = Box<dyn FnOnce(&mut Compiler) -> () + 'a>;
 
 pub struct ParseRule<'a> {
     pub function: Option<ParseFn<'a>>,
