@@ -21,8 +21,11 @@ pub fn repl() {
         pretty_printer.prompt().print();
         io::stdin().read_line(&mut input).unwrap();
         input.pop();
-
-        interpret(&input);
+        if input.len() > 0 {
+            interpret(&input).err().map(|err| pretty_printer.interpret_error(err).newline().print());
+        } else {
+            println!();
+        }
     }
 }
 

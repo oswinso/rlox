@@ -1,6 +1,7 @@
 use crate::bytecode::{Opcode, Value};
-use crate::compiler::{Token, TokenKind};
-use crate::vm::Stack;
+use crate::compiler::{CompileError, Token, TokenKind};
+use crate::driver::InterpretError;
+use crate::vm::{RuntimeError, Stack};
 use ansi_term::{Color, Style};
 use std::fmt::Write;
 use std::io;
@@ -136,6 +137,24 @@ impl PrettyPrinter {
             self.error.paint(message)
         )
         .unwrap();
+        self
+    }
+
+    pub fn interpret_error(&mut self, error: InterpretError) -> &mut Self {
+        match error {
+            InterpretError::CompileError(err) => self.compile_error(err),
+            InterpretError::RuntimeError(err) => self.runtime_error(err),
+        };
+        self
+    }
+
+    pub fn compile_error(&mut self, error: CompileError) -> &mut Self {
+        self
+    }
+
+    pub fn runtime_error(&mut self, error: RuntimeError) -> &mut Self {
+        let line = format!("[{}]", error.line);
+        write!(self.string, "{} {}", line, self.error.paint(error.message)).unwrap();
         self
     }
 }

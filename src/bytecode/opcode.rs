@@ -1,4 +1,3 @@
-use core::fmt::Display;
 use std::convert::TryFrom;
 use std::fmt;
 
@@ -8,10 +7,20 @@ pub enum Opcode {
     Ret,
     Push,
     Neg,
+    //    Binary ops
     Add,
     Sub,
     Mul,
     Div,
+    //    Literals
+    True,
+    False,
+    Nil,
+    //    Logical ops
+    Not,
+    Eq,
+    Gt,
+    Lt,
 }
 
 impl fmt::Display for Opcode {
@@ -25,6 +34,13 @@ impl fmt::Display for Opcode {
             Sub => "SUB",
             Mul => "MUL",
             Div => "DIV",
+            True => "TRUE",
+            False => "FALSE",
+            Nil => "NIL",
+            Not => "NOT",
+            Eq=> "EQ",
+            Gt=> "GT",
+            Lt => "LT",
         };
         write!(f, "{}", string)
     }
@@ -56,6 +72,13 @@ impl TryFrom<u8> for Opcode {
             4 => Ok(Sub),
             5 => Ok(Mul),
             6 => Ok(Div),
+            7 => Ok(True),
+            8 => Ok(False),
+            9 => Ok(Nil),
+            10 => Ok(Not),
+            11 => Ok(Eq),
+            12 => Ok(Gt),
+            13 => Ok(Lt),
             _ => Err(()),
         }
     }

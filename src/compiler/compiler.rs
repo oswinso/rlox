@@ -1,6 +1,7 @@
 use crate::bytecode::{Chunk, Opcode, Value};
 use crate::compiler::{
-    CompileError, ParseFn, ParseRule, Parser, Precedence, Scanner, Source, Token, TokenKind,
+    CompileError, Keyword, ParseFn, ParseRule, Parser, Precedence, Scanner, Source, Token,
+    TokenKind,
 };
 use crate::utils::PrettyPrinter;
 use std::fmt::Debug;
@@ -42,12 +43,12 @@ impl<'src> Compiler<'src> {
         );
         self.emit_return();
 
-
         #[cfg(feature = "print_code")]
         {
             let mut d = Disassembler::new();
             d.disassemble_chunk(&self.chunk, "lol");
             println!("{}", d.result());
+            d.clear();
         }
 
         if self.had_error {
@@ -65,7 +66,16 @@ impl<'src> Compiler<'src> {
             Ok(num) => num,
             Err(error) => panic!("Tried to parse {} but rip: {}", lexeme, error),
         };
-        self.emit_constant(num);
+        self.emit_constant(Value::Number(num));
+    }
+
+    pub fn literal(&mut self) {
+        match self.get_previous().ty {
+            TokenKind::Keyword(Keyword::True) => self.emit_byte(Opcode::True),
+            TokenKind::Keyword(Keyword::False) => self.emit_byte(Opcode::False),
+            TokenKind::Keyword(Keyword::Nil) => self.emit_byte(Opcode::Nil),
+            _ => unreachable!(),
+        }
     }
 
     pub fn grouping(&mut self) {
@@ -84,6 +94,7 @@ impl<'src> Compiler<'src> {
 
         match operator {
             TokenKind::Minus => self.emit_byte(Opcode::Neg),
+            TokenKind::Bang => self.emit_byte(Opcode::Not),
             _ => unreachable!(),
         }
     }
@@ -99,6 +110,12 @@ impl<'src> Compiler<'src> {
             TokenKind::Minus => self.emit_byte(Opcode::Sub),
             TokenKind::Star => self.emit_byte(Opcode::Mul),
             TokenKind::Slash => self.emit_byte(Opcode::Div),
+            TokenKind::BangEqual => self.emit_bytes(&vec![Opcode::Eq, Opcode::Not]),
+            TokenKind::EqualEqual => self.emit_byte(Opcode::Eq),
+            TokenKind::GreaterEqual => self.emit_bytes(&vec![Opcode::Lt, Opcode::Not]),
+            TokenKind::Greater => self.emit_byte(Opcode::Gt),
+            TokenKind::LessEqual => self.emit_bytes(&vec![Opcode::Gt, Opcode::Not]),
+            TokenKind::Less => self.emit_byte(Opcode::Lt),
             _ => unreachable!(),
         };
     }
@@ -119,6 +136,10 @@ impl<'src> Compiler<'src> {
         Some(Box::new(|s: &mut Compiler| s.number()))
     }
 
+    pub fn get_literal<'a>() -> Option<ParseFn<'a>> {
+        Some(Box::new(|s: &mut Compiler| s.literal()))
+    }
+
     pub fn get_prefix_rule<'a>(&self, token_kind: &TokenKind) -> ParseRule<'a> {
         use super::Keyword::*;
         use TokenKind::*;
@@ -134,7 +155,7 @@ impl<'src> Compiler<'src> {
             Semicolon => ParseRule::new(None, Precedence::None),
             Slash => ParseRule::new(None, Precedence::Factor),
             Star => ParseRule::new(None, Precedence::Factor),
-            Bang => ParseRule::new(None, Precedence::None),
+            Bang => ParseRule::new(Compiler::get_unary(), Precedence::None),
             BangEqual => ParseRule::new(None, Precedence::Equality),
             Equal => ParseRule::new(None, Precedence::None),
             EqualEqual => ParseRule::new(None, Precedence::Equality),
@@ -151,17 +172,17 @@ impl<'src> Compiler<'src> {
                 And => ParseRule::new(None, Precedence::And),
                 Class => ParseRule::new(None, Precedence::None),
                 Else => ParseRule::new(None, Precedence::None),
-                False => ParseRule::new(None, Precedence::None),
+                False => ParseRule::new(Compiler::get_literal(), Precedence::None),
                 Fun => ParseRule::new(None, Precedence::None),
                 For => ParseRule::new(None, Precedence::None),
                 If => ParseRule::new(None, Precedence::None),
-                Nil => ParseRule::new(None, Precedence::None),
+                Nil => ParseRule::new(Compiler::get_literal(), Precedence::None),
                 Or => ParseRule::new(None, Precedence::Or),
                 Print => ParseRule::new(None, Precedence::None),
                 Return => ParseRule::new(None, Precedence::None),
                 Super => ParseRule::new(None, Precedence::None),
                 This => ParseRule::new(None, Precedence::None),
-                True => ParseRule::new(None, Precedence::None),
+                True => ParseRule::new(Compiler::get_literal(), Precedence::None),
                 Let => ParseRule::new(None, Precedence::None),
                 While => ParseRule::new(None, Precedence::None),
             },
@@ -186,13 +207,13 @@ impl<'src> Compiler<'src> {
             Slash => ParseRule::new(Compiler::get_binary(), Precedence::Factor),
             Star => ParseRule::new(Compiler::get_binary(), Precedence::Factor),
             Bang => ParseRule::new(None, Precedence::None),
-            BangEqual => ParseRule::new(None, Precedence::Equality),
+            BangEqual => ParseRule::new(Compiler::get_binary(), Precedence::Equality),
             Equal => ParseRule::new(None, Precedence::None),
-            EqualEqual => ParseRule::new(None, Precedence::Equality),
-            Less => ParseRule::new(None, Precedence::Comparison),
-            LessEqual => ParseRule::new(None, Precedence::Comparison),
-            Greater => ParseRule::new(None, Precedence::Comparison),
-            GreaterEqual => ParseRule::new(None, Precedence::Comparison),
+            EqualEqual => ParseRule::new(Compiler::get_binary(), Precedence::Equality),
+            Less => ParseRule::new(Compiler::get_binary(), Precedence::Comparison),
+            LessEqual => ParseRule::new(Compiler::get_binary(), Precedence::Comparison),
+            Greater => ParseRule::new(Compiler::get_binary(), Precedence::Comparison),
+            GreaterEqual => ParseRule::new(Compiler::get_binary(), Precedence::Comparison),
             Identifier => ParseRule::new(None, Precedence::None),
             String => ParseRule::new(None, Precedence::None),
             Number => ParseRule::new(Compiler::get_number(), Precedence::None),
@@ -231,7 +252,7 @@ impl<'src> Compiler<'src> {
         if let Some(prefix_rule) = self.get_prefix_rule(&self.get_previous().ty).function {
             prefix_rule(self);
         } else {
-            panic!("Expected expression");
+            return;
         };
 
         let mut other_precedence = self.get_infix_rule(&self.get_current().ty).precedence;
@@ -299,7 +320,14 @@ impl<'src> Compiler<'src> {
         }
         self.panic_mode = true;
 
-        let error_message = self.parser.current.as_ref().unwrap().ty.try_into_error().unwrap();
+        let error_message = self
+            .parser
+            .current
+            .as_ref()
+            .unwrap()
+            .ty
+            .try_into_error()
+            .unwrap();
         let token = self.parser.current.as_ref().unwrap().clone();
 
         let lexeme = self.source.get_lexeme(&token);

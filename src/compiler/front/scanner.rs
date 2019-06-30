@@ -161,13 +161,12 @@ impl<'src> Scanner<'src> {
         TokenKind::Number
     }
 
-    fn identifier(&mut self, mut c: char) -> TokenKind {
+    fn identifier(&mut self, c: char) -> TokenKind {
         let mut buffer = String::with_capacity(16);
         buffer.push(c);
 
-        while (c.is_ascii_alphanumeric() || c == '_') && !self.is_at_end() {
+        while !self.is_at_end() && (self.peek().is_ascii_alphanumeric() || self.peek() == '_') {
             buffer.push(self.advance());
-            c = self.peek();
         }
 
         let keyword = self.get_keyword(&buffer);

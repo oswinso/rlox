@@ -52,6 +52,8 @@ impl Disassembler {
                 Push => self.offset(opcode, chunk, offset),
                 Neg => self.simple(opcode, offset),
                 Add | Sub | Mul | Div => self.simple(opcode, offset),
+                True | False | Nil | Not => self.simple(opcode, offset),
+                Eq | Lt | Gt => self.simple(opcode, offset),
             }
         } else {
             self.pretty_printer.unknown();
