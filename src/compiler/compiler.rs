@@ -1,4 +1,4 @@
-use crate::bytecode::{Chunk, Opcode, Value};
+use crate::bytecode::{Chunk, Opcode, Value, Obj};
 use crate::compiler::{
     CompileError, Keyword, ParseFn, ParseRule, Parser, Precedence, Scanner, Source, Token,
     TokenKind,
@@ -8,6 +8,7 @@ use std::fmt::Debug;
 
 #[cfg(feature = "print_code")]
 use crate::debug::Disassembler;
+use std::rc::Rc;
 
 pub struct Compiler<'src> {
     source: Source<'src>,
@@ -78,6 +79,11 @@ impl<'src> Compiler<'src> {
         }
     }
 
+    pub fn string(&mut self) {
+        let copied_string = self.source.get_string(self.parser.previous.as_ref().unwrap()).to_owned();
+        self.emit_constant(Value::Obj(Obj::String(Rc::new(copied_string))))
+    }
+
     pub fn grouping(&mut self) {
         self.expression();
         self.parser.consume(
@@ -140,6 +146,10 @@ impl<'src> Compiler<'src> {
         Some(Box::new(|s: &mut Compiler| s.literal()))
     }
 
+    pub fn get_string<'a>() -> Option<ParseFn<'a>> {
+        Some(Box::new(|s: &mut Compiler| s.string()))
+    }
+
     pub fn get_prefix_rule<'a>(&self, token_kind: &TokenKind) -> ParseRule<'a> {
         use super::Keyword::*;
         use TokenKind::*;
@@ -164,7 +174,7 @@ impl<'src> Compiler<'src> {
             Greater => ParseRule::new(None, Precedence::Comparison),
             GreaterEqual => ParseRule::new(None, Precedence::Comparison),
             Identifier => ParseRule::new(None, Precedence::None),
-            String => ParseRule::new(None, Precedence::None),
+            String => ParseRule::new(Compiler::get_string(), Precedence::None),
             Number => ParseRule::new(Compiler::get_number(), Precedence::None),
             QuestionMark => ParseRule::new(None, Precedence::None),
             Colon => ParseRule::new(None, Precedence::None),

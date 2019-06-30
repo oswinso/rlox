@@ -1,4 +1,4 @@
-use crate::bytecode::{Chunk, Opcode, Value};
+use crate::bytecode::{Chunk, Opcode, Value, Obj};
 use crate::vm::errors::*;
 
 use crate::vm::Stack;
@@ -8,6 +8,7 @@ use std::slice::Iter;
 
 #[cfg(feature = "trace_execution")]
 use crate::debug::Disassembler;
+use std::rc::Rc;
 
 pub type VMResult = Result<(), RuntimeError>;
 
@@ -80,7 +81,7 @@ impl<'chunk> VM<'chunk> {
                             };
                             self.stack.push(Value::Number(val));
                         }
-                        Add => self.binary_op(|left, right| Value::Number(left + right))?,
+                        Add => self.add()?,
                         Sub => self.binary_op(|left, right| Value::Number(left - right))?,
                         Mul => self.binary_op(|left, right| Value::Number(left * right))?,
                         Div => self.binary_op(|left, right| Value::Number(left / right))?,
@@ -88,13 +89,13 @@ impl<'chunk> VM<'chunk> {
                         False => self.stack.push(Value::Bool(false)),
                         Nil => self.stack.push(Value::Nil),
                         Not => {
-                            let is_falsey = VM::is_falsey(&self.stack.pop().unwrap());
+                            let is_falsey = self.stack.pop().unwrap().is_falsey();
                             self.stack.push(Value::Bool(is_falsey))
                         }
                         Eq => {
                             let a = self.stack.pop().unwrap();
                             let b = self.stack.pop().unwrap();
-                            self.stack.push(Value::Bool(VM::values_equal(&a, &b)))
+                            self.stack.push(Value::Bool(a == b))
                         }
                         Gt => self.binary_op(|left, right|Value::Bool(left > right))?,
                         Lt => self.binary_op(|left, right|Value::Bool(left < right))?,
@@ -129,10 +130,33 @@ impl<'chunk> VM<'chunk> {
         }
     }
 
+    fn add(&mut self) -> VMResult {
+        match (self.stack.pop(), self.stack.pop()) {
+            (Some(Value::Number(left)), Some(Value::Number(right))) => {
+                self.stack.push(Value::Number(left + right));
+                Ok(())
+            },
+            (Some(Value::Obj(Obj::String(second))), Some(Value::Obj(Obj::String(first)))) => {
+                let concatenated_string = format!("{}{}", &first, &second);
+                self.stack.push(Value::Obj(Obj::String(Rc::new(concatenated_string))));
+                Ok(())
+            },
+            (Some(_), Some(_)) => {
+                return Err(RuntimeError::new(0, "Expected two numbers or two strings on the stack"))
+            }
+            (None, _) | (_, None) => {
+                return Err(RuntimeError::new(
+                    0,
+                    "Expected at least two items on the stack",
+                ))
+            }
+        }
+    }
+
     fn read_constant(&mut self) -> Value {
-        let (line, byte) = self.read_byte().unwrap();
+        let (_line, byte) = self.read_byte().unwrap();
         let offset = *byte as usize;
-        self.chunk.constants.values[offset]
+        self.chunk.constants.values[offset].clone()
     }
 
     fn read_byte(&mut self) -> Option<(usize, &u8)> {
@@ -141,22 +165,5 @@ impl<'chunk> VM<'chunk> {
             self.offset += 1;
         }
         self.ip.next()
-    }
-
-    fn is_falsey(value: &Value) -> bool {
-        match value {
-            Value::Nil => true,
-            Value::Bool(b) => !b,
-            Value::Number(n) => *n == 0.0,
-        }
-    }
-
-    fn values_equal(left: &Value, right: &Value) -> bool {
-        match (left, right) {
-            (Value::Number(l), Value::Number(r)) => l == r,
-            (Value::Bool(l), Value::Bool(r)) => l == r,
-            (Value::Nil, Value::Nil) => true,
-            _ => false
-        }
     }
 }

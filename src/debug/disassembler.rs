@@ -68,11 +68,11 @@ impl Disassembler {
 
     fn offset(&mut self, opcode: Opcode, chunk: &Chunk, offset: usize) -> usize {
         let pointer = chunk.code[offset + 1] as usize;
-        let value = chunk.constants.values[pointer];
+        let value = &chunk.constants.values[pointer];
 
         self.pretty_printer.opcode(opcode);
         self.pretty_printer.pointer(pointer);
-        self.pretty_printer.value(&value);
+        self.pretty_printer.value(value);
         offset + 2
     }
 
