@@ -1,4 +1,4 @@
-use crate::bytecode::{Chunk, Opcode, Value, Obj};
+use crate::bytecode::{Chunk, Opcode, Value, Obj, InternMap};
 use crate::compiler::{
     CompileError, Keyword, ParseFn, ParseRule, Parser, Precedence, Scanner, Source, Token,
     TokenKind,
@@ -15,11 +15,12 @@ pub struct Compiler<'src> {
     chunk: Chunk,
     scanner: Scanner<'src>,
     parser: Parser<'src>,
+    strings: InternMap,
     pub had_error: bool,
     pub panic_mode: bool,
 }
 
-pub type CompileResult = Result<Chunk, CompileError>;
+pub type CompileResult = Result<(Chunk, InternMap), CompileError>;
 
 impl<'src> Compiler<'src> {
     pub fn new(source: Source<'src>) -> Compiler<'src> {
@@ -28,6 +29,7 @@ impl<'src> Compiler<'src> {
             chunk: Chunk::new(),
             scanner: Scanner::new(source),
             parser: Parser::new(source),
+            strings: InternMap::new(),
             had_error: false,
             panic_mode: false,
         }
@@ -55,7 +57,7 @@ impl<'src> Compiler<'src> {
         if self.had_error {
             Err(CompileError {})
         } else {
-            Ok(self.chunk)
+            Ok((self.chunk, self.strings))
         }
     }
 
@@ -80,8 +82,15 @@ impl<'src> Compiler<'src> {
     }
 
     pub fn string(&mut self) {
-        let copied_string = self.source.get_string(self.parser.previous.as_ref().unwrap()).to_owned();
-        self.emit_constant(Value::Obj(Obj::String(Rc::new(copied_string))))
+        let string = self.source.get_string(self.parser.previous.as_ref().unwrap());
+        let owned_string = if let Some(string) = self.strings.get(string) {
+            string.clone()
+        } else {
+            let rc = Rc::new(string.to_owned());
+            self.strings.insert(string.to_owned(), rc.clone());
+            rc
+        };
+        self.emit_constant(Value::Obj(Obj::String(owned_string)))
     }
 
     pub fn grouping(&mut self) {

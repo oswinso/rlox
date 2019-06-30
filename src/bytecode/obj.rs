@@ -9,7 +9,7 @@ pub enum Obj {
 impl PartialEq for Obj {
     fn eq(&self, other: &Obj) -> bool {
         match (self, other) {
-            (Obj::String(l), Obj::String(r)) => l == r
+            (Obj::String(l), Obj::String(r)) => Rc::ptr_eq(l, r)
         }
     }
 }

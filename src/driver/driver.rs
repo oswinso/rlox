@@ -41,12 +41,12 @@ pub fn interpret(src: &str) -> InterpretResult {
 
     let source = Source::new(src);
 
-    let chunk = match compile(source) {
-        Ok(chunk) => chunk,
+    let (chunk, strings) = match compile(source) {
+        Ok(res) => res,
         Err(err) => return Err(CompileError(err)),
     };
 
-    let mut vm = VM::new(&chunk);
+    let mut vm = VM::new(&chunk, strings);
     match vm.interpret() {
         Ok(_) => (),
         Err(err) => return Err(RuntimeError(err)),

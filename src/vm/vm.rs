@@ -1,4 +1,4 @@
-use crate::bytecode::{Chunk, Opcode, Value, Obj};
+use crate::bytecode::{Chunk, Opcode, Value, Obj, InternMap};
 use crate::vm::errors::*;
 
 use crate::vm::Stack;
@@ -9,6 +9,7 @@ use std::slice::Iter;
 #[cfg(feature = "trace_execution")]
 use crate::debug::Disassembler;
 use std::rc::Rc;
+use std::collections::HashSet;
 
 pub type VMResult = Result<(), RuntimeError>;
 
@@ -16,6 +17,7 @@ pub struct VM<'chunk> {
     chunk: &'chunk Chunk,
     ip: Enumerate<Iter<'chunk, u8>>,
     stack: Stack,
+    strings: InternMap,
 
     #[cfg(feature = "trace_execution")]
     disassembler: Disassembler,
@@ -24,11 +26,12 @@ pub struct VM<'chunk> {
 }
 
 impl<'chunk> VM<'chunk> {
-    pub fn new(chunk: &'chunk Chunk) -> VM<'chunk> {
+    pub fn new(chunk: &'chunk Chunk, strings: InternMap) -> VM<'chunk> {
         VM {
             chunk,
             ip: chunk.code.iter().enumerate(),
             stack: Stack::new(),
+            strings,
             #[cfg(feature = "trace_execution")]
             disassembler: Disassembler::new(),
             #[cfg(feature = "trace_execution")]
@@ -44,7 +47,7 @@ impl<'chunk> VM<'chunk> {
             {
                 self.disassembler.print_stack(&self.stack);
                 self.disassembler
-                    .disassemble_instruction(self.chunk, self.offset);
+                .disassemble_instruction(self.chunk, self.offset);
                 println!("{}", self.disassembler.result());
                 self.disassembler.clear();
             }
@@ -75,7 +78,7 @@ impl<'chunk> VM<'chunk> {
                                         return Err(RuntimeError::new(
                                             line,
                                             "Operand must be a number",
-                                        ))
+                                        ));
                                     }
                                 }
                             };
@@ -97,8 +100,8 @@ impl<'chunk> VM<'chunk> {
                             let b = self.stack.pop().unwrap();
                             self.stack.push(Value::Bool(a == b))
                         }
-                        Gt => self.binary_op(|left, right|Value::Bool(left > right))?,
-                        Lt => self.binary_op(|left, right|Value::Bool(left < right))?,
+                        Gt => self.binary_op(|left, right| Value::Bool(left > right))?,
+                        Lt => self.binary_op(|left, right| Value::Bool(left < right))?,
                     }
                 } else {
                     panic!("Couldn't decode opcode {}", instruction);
@@ -110,7 +113,7 @@ impl<'chunk> VM<'chunk> {
     }
 
     fn binary_op<F>(&mut self, f: F) -> VMResult
-    where
+        where
         F: FnOnce(f64, f64) -> Value,
     {
         match (self.stack.pop(), self.stack.pop()) {
@@ -119,13 +122,13 @@ impl<'chunk> VM<'chunk> {
                 Ok(())
             }
             (Some(_), Some(_)) => {
-                return Err(RuntimeError::new(0, "Expected two numbers on the stack"))
+                return Err(RuntimeError::new(0, "Expected two numbers on the stack"));
             }
             (None, _) | (_, None) => {
                 return Err(RuntimeError::new(
                     0,
                     "Expected at least two items on the stack",
-                ))
+                ));
             }
         }
     }
@@ -135,22 +138,33 @@ impl<'chunk> VM<'chunk> {
             (Some(Value::Number(left)), Some(Value::Number(right))) => {
                 self.stack.push(Value::Number(left + right));
                 Ok(())
-            },
+            }
             (Some(Value::Obj(Obj::String(second))), Some(Value::Obj(Obj::String(first)))) => {
-                let concatenated_string = format!("{}{}", &first, &second);
-                self.stack.push(Value::Obj(Obj::String(Rc::new(concatenated_string))));
-                Ok(())
-            },
+                self.concatenate_strings(first, second)
+            }
             (Some(_), Some(_)) => {
-                return Err(RuntimeError::new(0, "Expected two numbers or two strings on the stack"))
+                return Err(RuntimeError::new(0, "Expected two numbers or two strings on the stack"));
             }
             (None, _) | (_, None) => {
                 return Err(RuntimeError::new(
                     0,
                     "Expected at least two items on the stack",
-                ))
+                ));
             }
         }
+    }
+
+    fn concatenate_strings(&mut self, first: Rc<String>, second: Rc<String>) -> VMResult {
+        let concat = format!("{}{}", &first, &second);
+        let rc_concat = if let Some(string) = self.strings.get(&concat) {
+            string.clone()
+        } else {
+            let rc = Rc::new(concat.clone());
+            self.strings.insert(concat, rc.clone());
+            rc
+        };
+        self.stack.push(Value::Obj(Obj::String(rc_concat)));
+        Ok(())
     }
 
     fn read_constant(&mut self) -> Value {
