@@ -29,6 +29,8 @@ pub enum Opcode {
     DefineGlobal,
     GetGlobal,
     SetGlobal,
+    GetLocal,
+    SetLocal
 }
 
 impl fmt::Display for Opcode {
@@ -54,6 +56,8 @@ impl fmt::Display for Opcode {
             DefineGlobal => "DEF_GLOBAL",
             GetGlobal => "GET_GLOBAL",
             SetGlobal => "SET_GLOBAL",
+            GetLocal => "GET_LOCAL",
+            SetLocal => "SET_LOCAL"
         };
         write!(f, "{}", string)
     }
@@ -97,6 +101,8 @@ impl TryFrom<u8> for Opcode {
             16 => Ok(DefineGlobal),
             17 => Ok(GetGlobal),
             18 => Ok(SetGlobal),
+            19 => Ok(GetLocal),
+            20 => Ok(SetLocal),
             _ => Err(()),
         }
     }

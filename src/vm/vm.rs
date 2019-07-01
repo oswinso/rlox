@@ -1,4 +1,4 @@
-use crate::bytecode::{Chunk, GlobalMap, InternMap, Obj, Opcode, Value};
+use crate::bytecode::{Chunk, GlobalMap, InternMap, Obj, Opcode, Value, LocalMap};
 use crate::vm::errors::*;
 
 use crate::vm::Stack;
@@ -8,9 +8,8 @@ use std::slice::Iter;
 
 #[cfg(feature = "trace_execution")]
 use crate::debug::Disassembler;
+#[cfg(feature = "trace_execution")]
 use crate::utils::PrettyPrinter;
-use core::borrow::Borrow;
-use std::collections::HashSet;
 use std::rc::Rc;
 
 pub type VMResult = Result<(), RuntimeError>;
@@ -21,6 +20,7 @@ pub struct VM<'chunk> {
     stack: Stack,
     globals: GlobalMap,
     strings: InternMap,
+    locals: LocalMap,
 
     #[cfg(feature = "trace_execution")]
     disassembler: Disassembler,
@@ -29,13 +29,14 @@ pub struct VM<'chunk> {
 }
 
 impl<'chunk> VM<'chunk> {
-    pub fn new(chunk: &'chunk Chunk, strings: InternMap) -> VM<'chunk> {
+    pub fn new(chunk: &'chunk Chunk, strings: InternMap, locals: LocalMap) -> VM<'chunk> {
         VM {
             chunk,
             ip: chunk.code.iter().enumerate(),
             stack: Stack::new(),
             globals: GlobalMap::new(),
             strings,
+            locals,
             #[cfg(feature = "trace_execution")]
             disassembler: Disassembler::new(),
             #[cfg(feature = "trace_execution")]
@@ -112,7 +113,9 @@ impl<'chunk> VM<'chunk> {
                             #[cfg(feature = "trace_execution")]
                             {
                                 debug = true;
-                                PrettyPrinter::new(String::new()).print_print(&value).print();
+                                PrettyPrinter::new(String::new())
+                                    .print_print(&value)
+                                    .print();
                             }
                             if !debug {
                                 println!("{}", &value);
@@ -132,7 +135,10 @@ impl<'chunk> VM<'chunk> {
                             } else {
                                 return Err(RuntimeError::new(
                                     line,
-                                    &format!("Tried to get value of undefined variable '{}'", name.as_ref()),
+                                    &format!(
+                                        "Tried to get value of undefined variable '{}'",
+                                        name.as_ref()
+                                    ),
                                 ));
                             }
                         }
@@ -143,8 +149,21 @@ impl<'chunk> VM<'chunk> {
                             } else {
                                 return Err(RuntimeError::new(
                                     line,
-                                    &format!("Tried to assign to undefined variable '{}'", name.as_ref()),
+                                    &format!(
+                                        "Tried to assign to undefined variable '{}'",
+                                        name.as_ref()
+                                    ),
                                 ));
+                            }
+                        }
+                        GetLocal => {
+                            if let Some((_line, &offset)) = self.read_byte() {
+                                self.stack.push(self.stack[offset as usize].clone())
+                            }
+                        }
+                        SetLocal => {
+                            if let Some((_line, &offset)) = self.read_byte() {
+                                self.stack[offset as usize] = self.stack.last().unwrap().clone();
                             }
                         }
                     }

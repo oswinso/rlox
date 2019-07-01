@@ -16,6 +16,7 @@ pub struct PrettyPrinter {
     opcode: Style,
     offset: Style,
     value: Style,
+    local: Style,
     print_arrow: Style,
     prompt: Style,
 }
@@ -31,6 +32,7 @@ impl PrettyPrinter {
             opcode: Color::RGB(211, 54, 130).bold(), // magenta
             offset: Color::RGB(131, 148, 150).into(), // base0
             value: Color::RGB(133, 153, 0).into(), // green
+            local: Color::RGB(108, 113, 196).bold(), // violet
             print_arrow: Color::RGB(42, 161, 152).bold(), // cyan
             prompt: Color::RGB(38, 139, 210).bold(), // blue
         }
@@ -83,6 +85,12 @@ impl PrettyPrinter {
     pub fn value(&mut self, value: &Value) -> &mut Self {
         let format = format!("{:4.2} ", value);
         write!(self.string, "{}", self.value.paint(format)).unwrap();
+        self
+    }
+
+    pub fn local(&mut self, slot: u8) -> &mut Self {
+        let format = format!("{:04X} ", slot);
+        write!(self.string, "{}", self.local.paint(format)).unwrap();
         self
     }
 

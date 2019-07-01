@@ -57,8 +57,8 @@ impl Disassembler {
                 Print => self.simple(opcode, offset),
                 Pop => self.simple(opcode, offset),
                 DefineGlobal => self.offset(opcode, chunk, offset),
-                GetGlobal => self.offset(opcode, chunk, offset),
-                SetGlobal => self.offset(opcode, chunk, offset),
+                GetGlobal | SetGlobal => self.offset(opcode, chunk, offset),
+                GetLocal | SetLocal => self.byte(opcode, chunk, offset)
             }
         } else {
             self.pretty_printer.unknown();
@@ -78,6 +78,14 @@ impl Disassembler {
         self.pretty_printer.opcode(opcode);
         self.pretty_printer.pointer(pointer);
         self.pretty_printer.value(value);
+        offset + 2
+    }
+
+    fn byte(&mut self, opcode: Opcode, chunk: &Chunk, offset: usize) -> usize {
+        let slot = chunk.code[offset + 1];
+
+        self.pretty_printer.opcode(opcode);
+        self.pretty_printer.local(slot);
         offset + 2
     }
 

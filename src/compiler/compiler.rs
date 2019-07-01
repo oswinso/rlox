@@ -1,4 +1,4 @@
-use crate::bytecode::{get_or_insert_string, Chunk, InternMap, Obj, Opcode, Value};
+use crate::bytecode::{get_or_insert_string, Chunk, InternMap, LocalMap, Obj, Opcode, Value};
 use crate::compiler::{
     CompileError, Keyword, ParseFn, ParseRule, Parser, Precedence, Scanner, Source, Token,
     TokenKind,
@@ -16,11 +16,12 @@ pub struct Compiler<'src> {
     scanner: Scanner<'src>,
     parser: Parser<'src>,
     strings: InternMap,
+    locals: LocalMap,
     pub had_error: bool,
     pub panic_mode: bool,
 }
 
-pub type CompileResult = Result<(Chunk, InternMap), CompileError>;
+pub type CompileResult = Result<(Chunk, InternMap, LocalMap), CompileError>;
 
 impl<'src> Compiler<'src> {
     pub fn new(source: Source<'src>) -> Compiler<'src> {
@@ -30,6 +31,7 @@ impl<'src> Compiler<'src> {
             scanner: Scanner::new(source),
             parser: Parser::new(source),
             strings: InternMap::new(),
+            locals: LocalMap::new(),
             had_error: false,
             panic_mode: false,
         }
@@ -63,7 +65,7 @@ impl<'src> Compiler<'src> {
         if self.had_error {
             Err(CompileError {})
         } else {
-            Ok((self.chunk, self.strings))
+            Ok((self.chunk, self.strings, self.locals))
         }
     }
 
@@ -97,15 +99,36 @@ impl<'src> Compiler<'src> {
     }
 
     fn define_variable(&mut self, global: u8) {
+        if self.locals.in_scope() {
+            self.locals.mark_initialized();
+            return;
+        }
+
         self.emit_bytes(&vec![Opcode::DefineGlobal as u8, global]);
     }
 
     fn parse_variable(&mut self, error_message: &str) -> u8 {
         self.consume(&TokenKind::Identifier, error_message);
+
+        self.declare_variable();
+        if self.locals.in_scope() {
+            return 0;
+        }
+
         let token = self.parser.previous.as_ref().unwrap();
         let lexeme = self.source.get_lexeme(token);
         let identifier = get_or_insert_string(lexeme, &mut self.strings);
         self.make_identifier_constant(identifier)
+    }
+
+    fn declare_variable(&mut self) {
+        if !self.locals.in_scope() {
+            return;
+        }
+
+        let name = self.parser.previous.as_ref().unwrap().as_ref();
+
+        self.locals.add(name.clone(), &self.source).unwrap();
     }
 
     fn make_identifier_constant(&mut self, identifier: Rc<String>) -> u8 {
@@ -115,24 +138,43 @@ impl<'src> Compiler<'src> {
     fn statement(&mut self) {
         if self.try_consume(&TokenKind::Keyword(Keyword::Print)) {
             self.print_statement();
+        } else if self.try_consume(&TokenKind::LeftBrace) {
+            self.locals.begin_scope();
+            self.block();
+            let num_pops = self.locals.end_scope();
+            self.pop_locals(num_pops);
         } else {
             self.expression_statement();
         }
     }
 
-    pub fn expression_statement(&mut self) {
+    fn pop_locals(&mut self, num_pops: u8) {
+        for _ in 0..num_pops {
+            self.emit_byte(Opcode::Pop);
+        }
+    }
+
+    fn block(&mut self) {
+        while !self.parser.check(&TokenKind::RightBrace) && !self.parser.check(&TokenKind::EOF) {
+            self.declaration();
+        }
+
+        self.consume(&TokenKind::RightBrace, "Expected '}' after block.");
+    }
+
+    fn expression_statement(&mut self) {
         self.expression();
         self.consume(&TokenKind::Semicolon, "Expected ';' after expression.");
         self.emit_byte(Opcode::Pop)
     }
 
-    pub fn print_statement(&mut self) {
+    fn print_statement(&mut self) {
         self.expression();
         self.consume(&TokenKind::Semicolon, "Expected ';' after expression.");
         self.emit_byte(Opcode::Print);
     }
 
-    pub fn number(&mut self) {
+    fn number(&mut self) {
         let lexeme = self
             .source
             .get_lexeme(self.parser.previous.as_ref().unwrap().as_ref());
@@ -143,7 +185,7 @@ impl<'src> Compiler<'src> {
         self.emit_constant(Value::Number(num));
     }
 
-    pub fn literal(&mut self) {
+    fn literal(&mut self) {
         match self.get_previous().ty {
             TokenKind::Keyword(Keyword::True) => self.emit_byte(Opcode::True),
             TokenKind::Keyword(Keyword::False) => self.emit_byte(Opcode::False),
@@ -152,7 +194,7 @@ impl<'src> Compiler<'src> {
         }
     }
 
-    pub fn string(&mut self) {
+    fn string(&mut self) {
         let string = self
             .source
             .get_string(self.parser.previous.as_ref().unwrap());
@@ -160,26 +202,33 @@ impl<'src> Compiler<'src> {
         self.emit_constant(Value::Obj(Obj::String(owned_string)))
     }
 
-    pub fn variable(&mut self, can_assign: bool) {
+    fn variable(&mut self, can_assign: bool) {
         let token = self.parser.previous.as_ref().unwrap();
         let lexeme = self.source.get_lexeme(token);
         let identifier = get_or_insert_string(lexeme, &mut self.strings);
-        let global = self.make_identifier_constant(identifier);
 
+        let (get_op, set_op, offset) = match self.resolve_local(identifier.as_ref()) {
+            Some(index) => (Opcode::GetLocal, Opcode::SetLocal, index),
+            None => (Opcode::GetGlobal, Opcode::SetGlobal, self.make_identifier_constant(identifier))
+        };
 
         if can_assign && self.try_consume(&TokenKind::Equal) {
             self.expression();
-            self.emit_bytes(&vec![Opcode::SetGlobal as u8, global])
+            self.emit_bytes(&vec![set_op as u8, offset])
         } else {
-            self.get_global(global);
+            self.emit_bytes(&vec![get_op as u8, offset]);
         }
     }
 
-    pub fn get_global(&mut self, global: u8) {
+    fn resolve_local(&self, identifier: &str) -> Option<u8> {
+        self.locals.resolve(identifier, &self.source)
+    }
+
+    fn get_global(&mut self, global: u8) {
         self.emit_bytes(&vec![Opcode::GetGlobal as u8, global]);
     }
 
-    pub fn grouping(&mut self) {
+    fn grouping(&mut self) {
         self.expression();
         self.parser.consume(
             &mut self.scanner,
@@ -188,7 +237,7 @@ impl<'src> Compiler<'src> {
         );
     }
 
-    pub fn unary(&mut self) {
+    fn unary(&mut self) {
         let operator = self.parser.previous.as_ref().unwrap().ty.clone();
 
         self.parse_precendence(Precedence::Unary);
@@ -200,7 +249,7 @@ impl<'src> Compiler<'src> {
         }
     }
 
-    pub fn binary(&mut self) {
+    fn binary(&mut self) {
         let operator = self.parser.previous.as_ref().unwrap().ty.clone();
 
         let precedence = self.get_infix_rule(&operator).precedence;
@@ -221,35 +270,37 @@ impl<'src> Compiler<'src> {
         };
     }
 
-    pub fn get_grouping<'a>() -> Option<ParseFn<'a>> {
+    fn get_grouping<'a>() -> Option<ParseFn<'a>> {
         Some(Box::new(|s: &mut Compiler, _| s.grouping()))
     }
 
-    pub fn get_unary<'a>() -> Option<ParseFn<'a>> {
+    fn get_unary<'a>() -> Option<ParseFn<'a>> {
         Some(Box::new(|s: &mut Compiler, _| s.unary()))
     }
 
-    pub fn get_binary<'a>() -> Option<ParseFn<'a>> {
+    fn get_binary<'a>() -> Option<ParseFn<'a>> {
         Some(Box::new(|s: &mut Compiler, _| s.binary()))
     }
 
-    pub fn get_number<'a>() -> Option<ParseFn<'a>> {
+    fn get_number<'a>() -> Option<ParseFn<'a>> {
         Some(Box::new(|s: &mut Compiler, _| s.number()))
     }
 
-    pub fn get_literal<'a>() -> Option<ParseFn<'a>> {
+    fn get_literal<'a>() -> Option<ParseFn<'a>> {
         Some(Box::new(|s: &mut Compiler, _| s.literal()))
     }
 
-    pub fn get_string<'a>() -> Option<ParseFn<'a>> {
+    fn get_string<'a>() -> Option<ParseFn<'a>> {
         Some(Box::new(|s: &mut Compiler, _| s.string()))
     }
 
-    pub fn get_variable<'a>() -> Option<ParseFn<'a>> {
-        Some(Box::new(|s: &mut Compiler, can_assign| s.variable(can_assign)))
+    fn get_variable<'a>() -> Option<ParseFn<'a>> {
+        Some(Box::new(|s: &mut Compiler, can_assign| {
+            s.variable(can_assign)
+        }))
     }
 
-    pub fn get_prefix_rule<'a>(&self, token_kind: &TokenKind) -> ParseRule<'a> {
+    fn get_prefix_rule<'a>(&self, token_kind: &TokenKind) -> ParseRule<'a> {
         use super::Keyword::*;
         use TokenKind::*;
         match token_kind {
@@ -300,7 +351,7 @@ impl<'src> Compiler<'src> {
         }
     }
 
-    pub fn get_infix_rule<'a>(&self, token_kind: &TokenKind) -> ParseRule<'a> {
+    fn get_infix_rule<'a>(&self, token_kind: &TokenKind) -> ParseRule<'a> {
         use super::Keyword::*;
         use TokenKind::*;
         match token_kind {
@@ -351,11 +402,11 @@ impl<'src> Compiler<'src> {
         }
     }
 
-    pub fn expression(&mut self) {
+    fn expression(&mut self) {
         self.parse_precendence(Precedence::Assignment);
     }
 
-    pub fn parse_precendence(&mut self, precedence: Precedence) {
+    fn parse_precendence(&mut self, precedence: Precedence) {
         self.advance();
 
         let can_assign = precedence <= Precedence::Assignment;
@@ -389,7 +440,7 @@ impl<'src> Compiler<'src> {
         &self.parser.current.as_ref().unwrap()
     }
 
-    pub fn emit_byte<T>(&mut self, byte: T)
+    fn emit_byte<T>(&mut self, byte: T)
     where
         T: Into<u8> + Debug,
     {
@@ -397,7 +448,7 @@ impl<'src> Compiler<'src> {
         self.chunk.write(byte.into(), line);
     }
 
-    pub fn emit_bytes<T>(&mut self, bytes: &[T])
+    fn emit_bytes<T>(&mut self, bytes: &[T])
     where
         T: Into<u8> + Copy,
     {
@@ -407,19 +458,19 @@ impl<'src> Compiler<'src> {
         }
     }
 
-    pub fn emit_constant(&mut self, value: Value) {
+    fn emit_constant(&mut self, value: Value) {
         let constant = Compiler::make_constant(&mut self.chunk, value);
         self.emit_bytes(&[Opcode::Push.into(), constant]);
     }
 
-    pub fn make_constant(chunk: &mut Chunk, value: Value) -> u8 {
+    fn make_constant(chunk: &mut Chunk, value: Value) -> u8 {
         match chunk.add_constant(value) {
             Ok(constant_ptr) => constant_ptr,
             Err(_) => panic!("TODO: lmao go fix this error. Too many constants here"),
         }
     }
 
-    pub fn emit_return(&mut self) {
+    fn emit_return(&mut self) {
         self.emit_byte(Opcode::Ret);
     }
 
