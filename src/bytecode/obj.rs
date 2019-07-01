@@ -3,13 +3,13 @@ use std::rc::Rc;
 
 #[derive(Clone, Debug)]
 pub enum Obj {
-    String(Rc<String>)
+    String(Rc<String>),
 }
 
 impl PartialEq for Obj {
     fn eq(&self, other: &Obj) -> bool {
         match (self, other) {
-            (Obj::String(l), Obj::String(r)) => Rc::ptr_eq(l, r)
+            (Obj::String(l), Obj::String(r)) => Rc::ptr_eq(l, r),
         }
     }
 }

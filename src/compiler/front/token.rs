@@ -78,7 +78,11 @@ impl TokenKind {
 
 impl PartialEq for TokenKind {
     fn eq(&self, other: &TokenKind) -> bool {
-        std::mem::discriminant(self) == std::mem::discriminant(other)
+        if let (TokenKind::Keyword(l), TokenKind::Keyword(r)) = (self, other) {
+            l == r
+        } else {
+            std::mem::discriminant(self) == std::mem::discriminant(other)
+        }
     }
 }
 

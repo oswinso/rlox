@@ -54,6 +54,11 @@ impl Disassembler {
                 Add | Sub | Mul | Div => self.simple(opcode, offset),
                 True | False | Nil | Not => self.simple(opcode, offset),
                 Eq | Lt | Gt => self.simple(opcode, offset),
+                Print => self.simple(opcode, offset),
+                Pop => self.simple(opcode, offset),
+                DefineGlobal => self.offset(opcode, chunk, offset),
+                GetGlobal => self.offset(opcode, chunk, offset),
+                SetGlobal => self.offset(opcode, chunk, offset),
             }
         } else {
             self.pretty_printer.unknown();

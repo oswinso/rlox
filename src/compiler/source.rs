@@ -16,7 +16,9 @@ impl<'src> Source<'src> {
     }
 
     pub fn get_string(&self, token: &Token) -> &str {
-        std::str::from_utf8(&self.source.as_bytes()[token.position.start + 1..token.position.end - 1])
+        std::str::from_utf8(
+            &self.source.as_bytes()[token.position.start + 1..token.position.end - 1],
+        )
         .unwrap()
     }
 }

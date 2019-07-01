@@ -1,4 +1,4 @@
-use crate::bytecode::{Chunk, Opcode, Value, Obj, InternMap};
+use crate::bytecode::{get_or_insert_string, Chunk, InternMap, Obj, Opcode, Value};
 use crate::compiler::{
     CompileError, Keyword, ParseFn, ParseRule, Parser, Precedence, Scanner, Source, Token,
     TokenKind,
@@ -35,15 +35,21 @@ impl<'src> Compiler<'src> {
         }
     }
 
-    pub fn compile(mut self) -> CompileResult {
-        self.parser.advance(&mut self.scanner).unwrap();
+    pub fn try_consume(&mut self, token_kind: &TokenKind) -> bool {
+        self.parser.try_consume(&mut self.scanner, token_kind)
+    }
 
-        self.expression();
-        self.parser.consume(
-            &mut self.scanner,
-            TokenKind::EOF,
-            "Expected EOF after expression",
-        );
+    pub fn consume(&mut self, token_kind: &TokenKind, message: &str) {
+        self.parser.consume(&mut self.scanner, token_kind, message);
+    }
+
+    pub fn compile(mut self) -> CompileResult {
+        self.advance();
+
+        while !self.try_consume(&TokenKind::EOF) {
+            self.declaration();
+        }
+
         self.emit_return();
 
         #[cfg(feature = "print_code")]
@@ -59,6 +65,71 @@ impl<'src> Compiler<'src> {
         } else {
             Ok((self.chunk, self.strings))
         }
+    }
+
+    pub fn declaration(&mut self) {
+        if self.try_consume(&TokenKind::Keyword(Keyword::Let)) {
+            self.let_declaration();
+        } else {
+            self.statement();
+        }
+
+        if self.panic_mode {
+            self.synchronize()
+        }
+    }
+
+    fn let_declaration(&mut self) {
+        let global = self.parse_variable("Expected variable name");
+
+        if self.try_consume(&TokenKind::Equal) {
+            self.expression();
+        } else {
+            self.emit_byte(Opcode::Nil);
+        }
+
+        self.consume(
+            &TokenKind::Semicolon,
+            "Expected ';' after variable declaration",
+        );
+
+        self.define_variable(global);
+    }
+
+    fn define_variable(&mut self, global: u8) {
+        self.emit_bytes(&vec![Opcode::DefineGlobal as u8, global]);
+    }
+
+    fn parse_variable(&mut self, error_message: &str) -> u8 {
+        self.consume(&TokenKind::Identifier, error_message);
+        let token = self.parser.previous.as_ref().unwrap();
+        let lexeme = self.source.get_lexeme(token);
+        let identifier = get_or_insert_string(lexeme, &mut self.strings);
+        self.make_identifier_constant(identifier)
+    }
+
+    fn make_identifier_constant(&mut self, identifier: Rc<String>) -> u8 {
+        Compiler::make_constant(&mut self.chunk, Value::Obj(Obj::String(identifier)))
+    }
+
+    fn statement(&mut self) {
+        if self.try_consume(&TokenKind::Keyword(Keyword::Print)) {
+            self.print_statement();
+        } else {
+            self.expression_statement();
+        }
+    }
+
+    pub fn expression_statement(&mut self) {
+        self.expression();
+        self.consume(&TokenKind::Semicolon, "Expected ';' after expression.");
+        self.emit_byte(Opcode::Pop)
+    }
+
+    pub fn print_statement(&mut self) {
+        self.expression();
+        self.consume(&TokenKind::Semicolon, "Expected ';' after expression.");
+        self.emit_byte(Opcode::Print);
     }
 
     pub fn number(&mut self) {
@@ -82,22 +153,37 @@ impl<'src> Compiler<'src> {
     }
 
     pub fn string(&mut self) {
-        let string = self.source.get_string(self.parser.previous.as_ref().unwrap());
-        let owned_string = if let Some(string) = self.strings.get(string) {
-            string.clone()
-        } else {
-            let rc = Rc::new(string.to_owned());
-            self.strings.insert(string.to_owned(), rc.clone());
-            rc
-        };
+        let string = self
+            .source
+            .get_string(self.parser.previous.as_ref().unwrap());
+        let owned_string = get_or_insert_string(string, &mut self.strings);
         self.emit_constant(Value::Obj(Obj::String(owned_string)))
+    }
+
+    pub fn variable(&mut self, can_assign: bool) {
+        let token = self.parser.previous.as_ref().unwrap();
+        let lexeme = self.source.get_lexeme(token);
+        let identifier = get_or_insert_string(lexeme, &mut self.strings);
+        let global = self.make_identifier_constant(identifier);
+
+
+        if can_assign && self.try_consume(&TokenKind::Equal) {
+            self.expression();
+            self.emit_bytes(&vec![Opcode::SetGlobal as u8, global])
+        } else {
+            self.get_global(global);
+        }
+    }
+
+    pub fn get_global(&mut self, global: u8) {
+        self.emit_bytes(&vec![Opcode::GetGlobal as u8, global]);
     }
 
     pub fn grouping(&mut self) {
         self.expression();
         self.parser.consume(
             &mut self.scanner,
-            TokenKind::RightParen,
+            &TokenKind::RightParen,
             "Expected '(' after expression.",
         );
     }
@@ -136,27 +222,31 @@ impl<'src> Compiler<'src> {
     }
 
     pub fn get_grouping<'a>() -> Option<ParseFn<'a>> {
-        Some(Box::new(|s: &mut Compiler| s.grouping()))
+        Some(Box::new(|s: &mut Compiler, _| s.grouping()))
     }
 
     pub fn get_unary<'a>() -> Option<ParseFn<'a>> {
-        Some(Box::new(|s: &mut Compiler| s.unary()))
+        Some(Box::new(|s: &mut Compiler, _| s.unary()))
     }
 
     pub fn get_binary<'a>() -> Option<ParseFn<'a>> {
-        Some(Box::new(|s: &mut Compiler| s.binary()))
+        Some(Box::new(|s: &mut Compiler, _| s.binary()))
     }
 
     pub fn get_number<'a>() -> Option<ParseFn<'a>> {
-        Some(Box::new(|s: &mut Compiler| s.number()))
+        Some(Box::new(|s: &mut Compiler, _| s.number()))
     }
 
     pub fn get_literal<'a>() -> Option<ParseFn<'a>> {
-        Some(Box::new(|s: &mut Compiler| s.literal()))
+        Some(Box::new(|s: &mut Compiler, _| s.literal()))
     }
 
     pub fn get_string<'a>() -> Option<ParseFn<'a>> {
-        Some(Box::new(|s: &mut Compiler| s.string()))
+        Some(Box::new(|s: &mut Compiler, _| s.string()))
+    }
+
+    pub fn get_variable<'a>() -> Option<ParseFn<'a>> {
+        Some(Box::new(|s: &mut Compiler, can_assign| s.variable(can_assign)))
     }
 
     pub fn get_prefix_rule<'a>(&self, token_kind: &TokenKind) -> ParseRule<'a> {
@@ -182,7 +272,7 @@ impl<'src> Compiler<'src> {
             LessEqual => ParseRule::new(None, Precedence::Comparison),
             Greater => ParseRule::new(None, Precedence::Comparison),
             GreaterEqual => ParseRule::new(None, Precedence::Comparison),
-            Identifier => ParseRule::new(None, Precedence::None),
+            Identifier => ParseRule::new(Compiler::get_variable(), Precedence::None),
             String => ParseRule::new(Compiler::get_string(), Precedence::None),
             Number => ParseRule::new(Compiler::get_number(), Precedence::None),
             QuestionMark => ParseRule::new(None, Precedence::None),
@@ -268,8 +358,9 @@ impl<'src> Compiler<'src> {
     pub fn parse_precendence(&mut self, precedence: Precedence) {
         self.advance();
 
+        let can_assign = precedence <= Precedence::Assignment;
         if let Some(prefix_rule) = self.get_prefix_rule(&self.get_previous().ty).function {
-            prefix_rule(self);
+            prefix_rule(self, can_assign);
         } else {
             return;
         };
@@ -278,10 +369,15 @@ impl<'src> Compiler<'src> {
         while precedence <= other_precedence {
             self.advance();
             if let Some(infix_rule) = self.get_infix_rule(&self.get_previous().ty).function {
-                infix_rule(self);
+                infix_rule(self, false);
             }
 
             other_precedence = self.get_infix_rule(&self.get_current().ty).precedence;
+        }
+
+        if can_assign && self.try_consume(&TokenKind::Equal) {
+            self.do_error("Invalid assignment target.");
+            self.expression();
         }
     }
 
@@ -312,12 +408,12 @@ impl<'src> Compiler<'src> {
     }
 
     pub fn emit_constant(&mut self, value: Value) {
-        let constant = self.make_constant(value);
+        let constant = Compiler::make_constant(&mut self.chunk, value);
         self.emit_bytes(&[Opcode::Push.into(), constant]);
     }
 
-    pub fn make_constant(&mut self, value: Value) -> u8 {
-        match self.chunk.add_constant(value) {
+    pub fn make_constant(chunk: &mut Chunk, value: Value) -> u8 {
+        match chunk.add_constant(value) {
             Ok(constant_ptr) => constant_ptr,
             Err(_) => panic!("TODO: lmao go fix this error. Too many constants here"),
         }
@@ -353,11 +449,44 @@ impl<'src> Compiler<'src> {
         Compiler::error(lexeme, &mut self.had_error, &token, error_message)
     }
 
+    fn do_error(&mut self, error_message: &str) {
+        let token = self.parser.current.as_ref().unwrap().clone();
+        let lexeme = self.source.get_lexeme(&token);
+        Compiler::error(lexeme, &mut self.had_error, &token, error_message)
+    }
+
     fn error(lexeme: &str, error: &mut bool, token: &Token, message: &str) {
         PrettyPrinter::new(String::new())
             .parse_error(token, lexeme, message)
             .newline()
             .print();
         *error = true;
+    }
+
+    fn synchronize(&mut self) {
+        self.panic_mode = false;
+
+        while self.parser.current.as_ref().unwrap().ty != TokenKind::EOF {
+            if self.parser.previous.as_ref().unwrap().ty == TokenKind::Semicolon {
+                return;
+            }
+
+            match self.parser.current.as_ref().unwrap().ty {
+                TokenKind::Keyword(k) => match k {
+                    Keyword::Class
+                    | Keyword::Fun
+                    | Keyword::Let
+                    | Keyword::For
+                    | Keyword::If
+                    | Keyword::While
+                    | Keyword::Print
+                    | Keyword::Return => return,
+                    _ => (),
+                },
+                _ => (),
+            }
+
+            self.advance();
+        }
     }
 }

@@ -7,20 +7,28 @@ pub enum Opcode {
     Ret,
     Push,
     Neg,
-    //    Binary ops
+    // Binary ops
     Add,
     Sub,
     Mul,
     Div,
-    //    Literals
+    // Literals
     True,
     False,
     Nil,
-    //    Logical ops
+    // Logical ops
     Not,
     Eq,
     Gt,
     Lt,
+    // Print
+    Print,
+    // Stack
+    Pop,
+    // Variables
+    DefineGlobal,
+    GetGlobal,
+    SetGlobal,
 }
 
 impl fmt::Display for Opcode {
@@ -38,9 +46,14 @@ impl fmt::Display for Opcode {
             False => "FALSE",
             Nil => "NIL",
             Not => "NOT",
-            Eq=> "EQ",
-            Gt=> "GT",
+            Eq => "EQ",
+            Gt => "GT",
             Lt => "LT",
+            Print => "PRINT",
+            Pop => "POP",
+            DefineGlobal => "DEF_GLOBAL",
+            GetGlobal => "GET_GLOBAL",
+            SetGlobal => "SET_GLOBAL",
         };
         write!(f, "{}", string)
     }
@@ -79,6 +92,11 @@ impl TryFrom<u8> for Opcode {
             11 => Ok(Eq),
             12 => Ok(Gt),
             13 => Ok(Lt),
+            14 => Ok(Print),
+            15 => Ok(Pop),
+            16 => Ok(DefineGlobal),
+            17 => Ok(GetGlobal),
+            18 => Ok(SetGlobal),
             _ => Err(()),
         }
     }

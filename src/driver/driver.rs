@@ -22,7 +22,9 @@ pub fn repl() {
         io::stdin().read_line(&mut input).unwrap();
         input.pop();
         if input.len() > 0 {
-            interpret(&input).err().map(|err| pretty_printer.interpret_error(err).newline().print());
+            interpret(&input)
+                .err()
+                .map(|err| pretty_printer.interpret_error(err).newline().print());
         } else {
             println!();
         }

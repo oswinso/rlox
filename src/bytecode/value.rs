@@ -1,7 +1,7 @@
 use std::convert::TryFrom;
 
-use std::fmt;
 use crate::bytecode::Obj;
+use std::fmt;
 
 pub(crate) type ConstantPointer = u8;
 
@@ -10,7 +10,7 @@ pub enum Value {
     Nil,
     Bool(bool),
     Number(f64),
-    Obj(Obj)
+    Obj(Obj),
 }
 
 impl Value {
@@ -19,7 +19,7 @@ impl Value {
             Value::Nil => true,
             Value::Bool(b) => !b,
             Value::Number(n) => *n == 0.0,
-            Value::Obj(_) => false
+            Value::Obj(_) => false,
         }
     }
 }
@@ -30,7 +30,7 @@ impl fmt::Display for Value {
             Value::Nil => write!(f, "Nil"),
             Value::Bool(b) => write!(f, "{}", b),
             Value::Number(num) => write!(f, "{}", num),
-            Value::Obj(obj) => write!(f, "{}", obj)
+            Value::Obj(obj) => write!(f, "{}", obj),
         }
     }
 }
@@ -42,7 +42,7 @@ impl PartialEq for Value {
             (Value::Bool(l), Value::Bool(r)) => l == r,
             (Value::Nil, Value::Nil) => true,
             (Value::Obj(l), Value::Obj(r)) => l == r,
-            _ => false
+            _ => false,
         }
     }
 }

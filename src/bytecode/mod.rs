@@ -1,13 +1,15 @@
 mod chunk;
+mod obj;
 mod opcode;
 mod source_info;
-mod value;
-mod obj;
 mod strings;
+mod value;
+mod variables;
 
 pub use chunk::*;
+pub use obj::*;
 pub use opcode::*;
 pub use source_info::*;
-pub use value::*;
-pub use obj::*;
 pub use strings::*;
+pub use value::*;
+pub use variables::*;

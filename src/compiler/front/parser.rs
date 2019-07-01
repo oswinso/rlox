@@ -30,16 +30,30 @@ impl<'a> Parser<'a> {
         Ok(())
     }
 
-    pub fn consume(&mut self, scanner: &mut Scanner<'a>, token_kind: TokenKind, message: &str) {
-        if self.current.as_ref().unwrap().ty == token_kind {
-            self.advance(scanner);
+    pub fn consume(&mut self, scanner: &mut Scanner<'a>, token_kind: &TokenKind, message: &str) {
+        if self.check(&token_kind) {
+            self.advance(scanner).unwrap();
         } else {
+            eprintln!("Error: {}", message);
             //            self.parser_error(message);
         }
     }
+
+    pub fn try_consume(&mut self, scanner: &mut Scanner<'a>, token_kind: &TokenKind) -> bool {
+        if self.check(&token_kind) {
+            self.consume(scanner, &token_kind, "");
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn check(&self, token_kind: &TokenKind) -> bool {
+        &self.current.as_ref().unwrap().ty == token_kind
+    }
 }
 
-pub type ParseFn<'a> = Box<dyn FnOnce(&mut Compiler) -> () + 'a>;
+pub type ParseFn<'a> = Box<dyn FnOnce(&mut Compiler, bool) -> () + 'a>;
 
 pub struct ParseRule<'a> {
     pub function: Option<ParseFn<'a>>,
