@@ -66,7 +66,7 @@ impl PrettyPrinter {
     }
 
     pub fn opcode(&mut self, opcode: Opcode) -> &mut Self {
-        let format = format!("{:4}{:4}", opcode, "");
+        let format = format!("{:12}{:4}", opcode, "");
         write!(self.string, "{}", self.opcode.paint(format)).unwrap();
         self
     }

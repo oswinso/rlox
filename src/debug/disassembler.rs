@@ -58,7 +58,9 @@ impl Disassembler {
                 Pop => self.simple(opcode, offset),
                 DefineGlobal => self.offset(opcode, chunk, offset),
                 GetGlobal | SetGlobal => self.offset(opcode, chunk, offset),
-                GetLocal | SetLocal => self.byte(opcode, chunk, offset)
+                GetLocal | SetLocal => self.byte(opcode, chunk, offset),
+                JZ | JMP => self.jump(opcode, 1, chunk, offset),
+                LOOP => self.jump(opcode, -1, chunk, offset)
             }
         } else {
             self.pretty_printer.unknown();
@@ -79,6 +81,17 @@ impl Disassembler {
         self.pretty_printer.pointer(pointer);
         self.pretty_printer.value(value);
         offset + 2
+    }
+
+    fn jump(&mut self, opcode: Opcode, sign: i32, chunk: &Chunk, offset: usize) -> usize {
+        let mut jump: usize = (chunk.code[offset + 1] as usize) << 8;
+        jump = jump | chunk.code[offset + 2] as usize;
+
+        self.pretty_printer.opcode(opcode);
+        self.pretty_printer.pointer(offset);
+        let to_offset = offset as i32 + 3 + sign * (jump as i32);
+        self.pretty_printer.chunk_offset(to_offset as usize);
+        offset + 3
     }
 
     fn byte(&mut self, opcode: Opcode, chunk: &Chunk, offset: usize) -> usize {

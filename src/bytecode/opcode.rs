@@ -1,5 +1,6 @@
 use std::convert::TryFrom;
 use std::fmt;
+use core::fmt::Debug;
 
 #[derive(Copy, Clone, PartialEq, Eq)]
 #[repr(u8)]
@@ -30,7 +31,11 @@ pub enum Opcode {
     GetGlobal,
     SetGlobal,
     GetLocal,
-    SetLocal
+    SetLocal,
+    // Control Flow
+    JZ,
+    JMP,
+    LOOP,
 }
 
 impl fmt::Display for Opcode {
@@ -57,9 +62,12 @@ impl fmt::Display for Opcode {
             GetGlobal => "GET_GLOBAL",
             SetGlobal => "SET_GLOBAL",
             GetLocal => "GET_LOCAL",
-            SetLocal => "SET_LOCAL"
+            SetLocal => "SET_LOCAL",
+            JZ => "JZ",
+            JMP => "JMP",
+            LOOP => "LOOP",
         };
-        write!(f, "{}", string)
+        fmt::Display::fmt(string, f)
     }
 }
 
@@ -103,6 +111,9 @@ impl TryFrom<u8> for Opcode {
             18 => Ok(SetGlobal),
             19 => Ok(GetLocal),
             20 => Ok(SetLocal),
+            21 => Ok(JZ),
+            22 => Ok(JMP),
+            23 => Ok(LOOP),
             _ => Err(()),
         }
     }

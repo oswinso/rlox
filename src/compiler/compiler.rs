@@ -9,6 +9,7 @@ use std::fmt::Debug;
 #[cfg(feature = "print_code")]
 use crate::debug::Disassembler;
 use std::rc::Rc;
+use std::convert::TryInto;
 
 pub struct Compiler<'src> {
     source: Source<'src>,
@@ -139,13 +140,145 @@ impl<'src> Compiler<'src> {
         if self.try_consume(&TokenKind::Keyword(Keyword::Print)) {
             self.print_statement();
         } else if self.try_consume(&TokenKind::LeftBrace) {
-            self.locals.begin_scope();
-            self.block();
-            let num_pops = self.locals.end_scope();
-            self.pop_locals(num_pops);
+            self.block_statement();
+        } else if self.try_consume(&TokenKind::Keyword(Keyword::If)) {
+            self.if_statement();
+        } else if self.try_consume(&TokenKind::Keyword(Keyword::While)) {
+            self.while_statement();
+        } else if self.try_consume(&TokenKind::Keyword(Keyword::For)) {
+            self.for_statement();
         } else {
             self.expression_statement();
         }
+    }
+
+    fn block_statement(&mut self) {
+        self.locals.begin_scope();
+        self.block();
+        let num_pops = self.locals.end_scope();
+        self.pop_locals(num_pops);
+    }
+
+    fn if_statement(&mut self) {
+        self.consume(&TokenKind::LeftParen, "Expected '(' after 'if'");
+        self.expression();
+        self.consume(&TokenKind::RightParen, "Expected ')' after 'if' condition");
+        let then_jump = self.emit_jump(Opcode::JZ);
+        self.emit_byte(Opcode::Pop);
+        self.statement();
+
+        let else_jump = self.emit_jump(Opcode::JMP);
+        self.patch_jump(then_jump);
+        self.emit_byte(Opcode::Pop);
+
+
+        if self.try_consume(&TokenKind::Keyword(Keyword::Else)) {
+            self.statement();
+        }
+        self.patch_jump(else_jump);
+    }
+
+    fn while_statement(&mut self) {
+        let loop_start = self.chunk.code.len();
+        self.consume(&TokenKind::LeftParen, "Expected '(' after 'if'");
+        self.expression();
+        self.consume(&TokenKind::RightParen, "Expected ')' after 'if' condition");
+
+        let exit_jump = self.emit_jump(Opcode::JZ);
+
+        self.emit_byte(Opcode::Pop);
+        self.statement();
+
+        self.emit_loop(loop_start);
+
+        self.patch_jump(exit_jump);
+        self.emit_byte(Opcode::Pop);
+    }
+
+    fn for_statement(&mut self) {
+        self.locals.begin_scope();
+
+        self.consume(&TokenKind::LeftParen, "Expected '(' after 'if'");
+
+        // Initializer
+        if self.try_consume(&TokenKind::Keyword(Keyword::Let)) {
+            self.let_declaration();
+        } else if self.try_consume(&TokenKind::Semicolon) {
+            // No initializer
+        } else {
+            self.expression_statement();
+        }
+
+        // Condition
+        let mut loop_start = self.chunk.code.len();
+        let mut exit_jump = None;
+        if !self.try_consume(&TokenKind::Semicolon) {
+            self.expression();
+            self.consume(&TokenKind::Semicolon, "Expected ';' after loop condition");
+
+            // Jump out of for loop if condition is false
+            exit_jump = Some(self.emit_jump(Opcode::JZ));
+            self.emit_byte(Opcode::Pop);
+        }
+
+        // Increment
+        if !self.try_consume(&TokenKind::RightParen) {
+            let body_jump = self.emit_jump(Opcode::JMP);
+
+            let increment_start = self.chunk.code.len();
+            self.expression();
+            self.emit_byte(Opcode::Pop);
+            self.consume(&TokenKind::RightParen, "Expected ')' after for clause.");
+
+            self.emit_loop(loop_start);
+            loop_start = increment_start;
+            self.patch_jump(body_jump);
+        }
+
+        self.statement();
+        self.emit_loop(loop_start);
+
+        if let Some(exit_jump) = exit_jump {
+            self.patch_jump(exit_jump);
+            self.emit_byte(Opcode::Pop);
+        }
+
+        self.locals.end_scope();
+    }
+
+    fn emit_loop(&mut self, loop_start: usize) {
+        self.emit_byte(Opcode::LOOP);
+
+        let offset = self.chunk.code.len() - loop_start + 2;
+        let offset: u16 = if let Ok(offset) = offset.try_into() {
+            offset
+        } else {
+            eprintln!("Offset of {} is too large for loop", offset);
+            0
+        };
+
+        self.emit_byte((offset >> 8) as u8);
+        self.emit_byte((offset & 0xff) as u8);
+    }
+
+    fn emit_jump(&mut self, opcode: Opcode) -> usize {
+        self.emit_byte(opcode);
+        self.emit_byte(0xff);
+        self.emit_byte(0xff);
+        self.chunk.code.len() - 2
+    }
+
+    fn patch_jump(&mut self, offset: usize) {
+        let jump = self.chunk.code.len() - offset - 2;
+        let jump: u16 = if let Ok(jump) = jump.try_into() {
+            jump
+        } else {
+            eprintln!("Jump of {} is too far!", jump);
+            0
+        };
+
+        self.chunk.code[offset] = (jump >> 8) as u8;
+        self.chunk.code[offset + 1] = (jump & 0xff) as u8;
     }
 
     fn pop_locals(&mut self, num_pops: u8) {
@@ -200,6 +333,24 @@ impl<'src> Compiler<'src> {
             .get_string(self.parser.previous.as_ref().unwrap());
         let owned_string = get_or_insert_string(string, &mut self.strings);
         self.emit_constant(Value::Obj(Obj::String(owned_string)))
+    }
+
+    fn and(&mut self) {
+        let end_jump = self.emit_jump(Opcode::JZ);
+        self.emit_byte(Opcode::Pop);
+        self.parse_precendence(Precedence::And);
+        self.patch_jump(end_jump);
+    }
+
+    fn or(&mut self) {
+        let else_jump = self.emit_jump(Opcode::JZ);
+        let end_jump = self.emit_jump(Opcode::JMP);
+
+        self.patch_jump(else_jump);
+        self.emit_byte(Opcode::Pop);
+
+        self.parse_precendence(Precedence::Or);
+        self.patch_jump(end_jump);
     }
 
     fn variable(&mut self, can_assign: bool) {
@@ -300,6 +451,14 @@ impl<'src> Compiler<'src> {
         }))
     }
 
+    fn get_and<'a>() -> Option<ParseFn<'a>> {
+        Some(Box::new(|s: &mut Compiler, _| s.and()))
+    }
+
+    fn get_or<'a>() -> Option<ParseFn<'a>> {
+        Some(Box::new(|s: &mut Compiler, _| s.or()))
+    }
+
     fn get_prefix_rule<'a>(&self, token_kind: &TokenKind) -> ParseRule<'a> {
         use super::Keyword::*;
         use TokenKind::*;
@@ -380,7 +539,7 @@ impl<'src> Compiler<'src> {
             QuestionMark => ParseRule::new(None, Precedence::None),
             Colon => ParseRule::new(None, Precedence::None),
             Keyword(keyword) => match keyword {
-                And => ParseRule::new(None, Precedence::And),
+                And => ParseRule::new(Compiler::get_and(), Precedence::And),
                 Class => ParseRule::new(None, Precedence::None),
                 Else => ParseRule::new(None, Precedence::None),
                 False => ParseRule::new(None, Precedence::None),
@@ -388,7 +547,7 @@ impl<'src> Compiler<'src> {
                 For => ParseRule::new(None, Precedence::None),
                 If => ParseRule::new(None, Precedence::None),
                 Nil => ParseRule::new(None, Precedence::None),
-                Or => ParseRule::new(None, Precedence::Or),
+                Or => ParseRule::new(Compiler::get_or(), Precedence::Or),
                 Print => ParseRule::new(None, Precedence::None),
                 Return => ParseRule::new(None, Precedence::None),
                 Super => ParseRule::new(None, Precedence::None),

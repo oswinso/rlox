@@ -16,7 +16,7 @@ pub type VMResult = Result<(), RuntimeError>;
 
 pub struct VM<'chunk> {
     chunk: &'chunk Chunk,
-    ip: Enumerate<Iter<'chunk, u8>>,
+    ip: usize,
     stack: Stack,
     globals: GlobalMap,
     strings: InternMap,
@@ -32,7 +32,7 @@ impl<'chunk> VM<'chunk> {
     pub fn new(chunk: &'chunk Chunk, strings: InternMap, locals: LocalMap) -> VM<'chunk> {
         VM {
             chunk,
-            ip: chunk.code.iter().enumerate(),
+            ip: 0,
             stack: Stack::new(),
             globals: GlobalMap::new(),
             strings,
@@ -56,9 +56,9 @@ impl<'chunk> VM<'chunk> {
                 println!("{}", self.disassembler.result());
                 self.disassembler.clear();
             }
-            if let Some((line, &instruction)) = self.read_byte() {
-                if let Ok(opcode) = instruction.try_into() {
-                    match opcode {
+            if let Some((line, instruction)) = self.read_byte() {
+                match instruction.try_into() {
+                    Ok(opcode) => match opcode {
                         Ret => {
                             #[cfg(feature = "trace_execution")]
                             {
@@ -114,8 +114,8 @@ impl<'chunk> VM<'chunk> {
                             {
                                 debug = true;
                                 PrettyPrinter::new(String::new())
-                                    .print_print(&value)
-                                    .print();
+                                .print_print(&value)
+                                .print();
                             }
                             if !debug {
                                 println!("{}", &value);
@@ -157,18 +157,36 @@ impl<'chunk> VM<'chunk> {
                             }
                         }
                         GetLocal => {
-                            if let Some((_line, &offset)) = self.read_byte() {
+                            if let Some((_line, offset)) = self.read_byte() {
                                 self.stack.push(self.stack[offset as usize].clone())
                             }
                         }
                         SetLocal => {
-                            if let Some((_line, &offset)) = self.read_byte() {
+                            if let Some((_line, offset)) = self.read_byte() {
                                 self.stack[offset as usize] = self.stack.last().unwrap().clone();
                             }
                         }
+                        JZ => {
+                            if let Some((_line, offset)) = self.read_short() {
+                                if self.stack.last().as_ref().unwrap().is_falsey() {
+                                    self.move_ip(offset as i32);
+                                }
+                            }
+                        }
+                        JMP => {
+                            if let Some((_line, offset)) = self.read_short() {
+                                self.move_ip(offset as i32);
+                            }
+                        }
+                        LOOP => {
+                            if let Some((_line, offset)) = self.read_short() {
+                                self.move_ip(-(offset as i32));
+                            }
+                        }
+                    },
+                    Err(..) => {
+                        panic!("Couldn't decode opcode {}", instruction);
                     }
-                } else {
-                    panic!("Couldn't decode opcode {}", instruction);
                 }
             } else {
                 return Ok(());
@@ -181,7 +199,7 @@ impl<'chunk> VM<'chunk> {
         F: FnOnce(f64, f64) -> Value,
     {
         match (self.stack.pop(), self.stack.pop()) {
-            (Some(Value::Number(left)), Some(Value::Number(right))) => {
+            (Some(Value::Number(right)), Some(Value::Number(left))) => {
                 self.stack.push(f(left, right));
                 Ok(())
             }
@@ -236,16 +254,25 @@ impl<'chunk> VM<'chunk> {
 
     fn read_constant(&mut self) -> Value {
         let (_line, byte) = self.read_byte().unwrap();
-        let offset = *byte as usize;
+        let offset = byte as usize;
         self.chunk.constants.values[offset].clone()
     }
 
-    fn read_byte(&mut self) -> Option<(usize, &u8)> {
+    fn read_byte(&mut self) -> Option<(usize, u8)> {
         #[cfg(feature = "trace_execution")]
         {
             self.offset += 1;
         }
-        self.ip.next()
+        let ret = Some((self.ip, self.chunk.code[self.ip]));
+        self.ip += 1;
+        ret
+    }
+
+    fn read_short(&mut self) -> Option<(usize, u16)> {
+        let (line, top) = self.read_byte()?;
+        let (_, bottom) = self.read_byte()?;
+        let concat = ((top as u16) << 8) + bottom as u16;
+        Some((line, concat))
     }
 
     fn read_string(&mut self) -> Option<Rc<String>> {
@@ -253,5 +280,13 @@ impl<'chunk> VM<'chunk> {
             Value::Obj(Obj::String(str)) => Some(str),
             _ => None,
         }
+    }
+
+    fn move_ip(&mut self, offset: i32) {
+        #[cfg(feature = "trace_execution")]
+        {
+            self.offset = ((self.offset as i32) + offset) as usize;
+        }
+        self.ip = (self.ip as i32 + offset) as usize;
     }
 }
